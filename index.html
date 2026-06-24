@@ -10,6 +10,7 @@
     --text: #1f2937; --muted: #6b7280; --accent: #2563eb;
     --p50: #10b981; --p85: #f59e0b; --p95: #ef4444;
     --danger: #dc2626;
+    --xmr-cl: #2563eb; --xmr-limit: #ef4444;
   }
   * { box-sizing: border-box; }
   body { margin:0; padding:24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
@@ -36,7 +37,10 @@
   .preset:hover { background:#f3f4f6; color: var(--text); }
   .preset.active { background:#eff6ff; border-color:var(--accent); color:var(--accent); }
   input[type=date] { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
-  #chart_scatter, #chart_strip { width: 100%; height: 540px; cursor: crosshair; }
+  #chart_scatter, #chart_strip, #chart_xmr_x, #chart_xmr_mr { width: 100%; cursor: crosshair; }
+  #chart_scatter, #chart_strip { height: 540px; }
+  #chart_xmr_x { height: 380px; }
+  #chart_xmr_mr { height: 260px; }
   table { width:100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
   th:first-child, td:first-child { text-align: left; }
@@ -54,12 +58,27 @@
   .stats-mini { display:flex; gap:24px; font-size:13px; color: var(--muted); }
   .stats-mini strong { color: var(--text); font-weight: 600; }
   .help-text { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+  /* Tabs */
+  .tabs { display:flex; gap:4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tab { padding: 10px 18px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  /* XmR stats */
+  .xmr-stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .xmr-stat { padding: 12px; background:#f9fafb; border-radius:8px; }
+  .xmr-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .xmr-stat-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
+  .xmr-stat-value.signal { color: var(--danger); }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Czasy realizacji zadań – FSI Zespół 1</h1>
-  <div class="subtitle">Scatterplot w czasie + rozkład per rozmiar, z filtrami dat i ręcznym usuwaniem outlierów</div>
+  <div class="subtitle">Scatterplot + XmR control chart · źródło: Jira</div>
 
   <div class="panel">
     <div class="panel-section">
@@ -91,7 +110,7 @@
         <div class="stats-mini">
           <div>Widoczne: <strong id="stat-visible">0</strong></div>
           <div>Wykluczone ręcznie: <strong id="stat-excluded">0</strong></div>
-          <div>Razem w zbiorze: <strong id="stat-total">0</strong></div>
+          <div>Razem w zakresie dat: <strong id="stat-total">0</strong></div>
         </div>
         <button class="btn btn-danger" id="btn-restore-all" onclick="restoreAll()">Przywróć wszystkie wykluczone</button>
       </div>
@@ -100,33 +119,79 @@
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Scatterplot: czas realizacji w czasie</h2>
-    <div id="chart_scatter"></div>
-    <div class="chart-caption">
-      <span class="legend-line" style="background:var(--p50);"></span>p50
-      &nbsp;&nbsp;<span class="legend-line" style="background:var(--p85);"></span>p85
-      &nbsp;&nbsp;<span class="legend-line" style="background:var(--p95);"></span>p95
-      &nbsp;&nbsp;— linie przerywane: wspólne (wszystkie wybrane). Kliknij punkt, aby wykluczyć.
+  <div class="tabs">
+    <div class="tab active" data-tab="overview">Scatter + rozkład</div>
+    <div class="tab" data-tab="xmr">XmR (Individuals &amp; Moving Range)</div>
+  </div>
+
+  <!-- Tab: Overview -->
+  <div class="tab-content active" id="tab-overview">
+    <div class="panel">
+      <h2>Scatterplot: czas realizacji w czasie</h2>
+      <div id="chart_scatter"></div>
+      <div class="chart-caption">
+        <span class="legend-line" style="background:var(--p50);"></span>p50
+        &nbsp;&nbsp;<span class="legend-line" style="background:var(--p85);"></span>p85
+        &nbsp;&nbsp;<span class="legend-line" style="background:var(--p95);"></span>p95
+        &nbsp;&nbsp;— linie przerywane: wspólne. Kliknij punkt, aby wykluczyć.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Rozkład per rozmiar (Story Points)</h2>
+      <div id="chart_strip"></div>
+      <div class="chart-caption">
+        Linie ciągłe: p50/p85/p95 per rozmiar &nbsp;·&nbsp; linie przerywane: percentyle wspólne. Kliknij punkt, aby wykluczyć.
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Percentyle czasu realizacji (dni)</h2>
+      <table id="ptable">
+        <thead>
+          <tr><th>Story Points</th><th>Liczba</th><th>Min</th><th>p50</th><th>p85</th><th>p95</th><th>Max</th></tr>
+        </thead>
+        <tbody id="ptbody"></tbody>
+      </table>
     </div>
   </div>
 
-  <div class="panel">
-    <h2>Rozkład per rozmiar (Story Points)</h2>
-    <div id="chart_strip"></div>
-    <div class="chart-caption">
-      Linie ciągłe: p50/p85/p95 per rozmiar &nbsp;·&nbsp; linie przerywane: percentyle wspólne. Kliknij punkt, aby wykluczyć.
+  <!-- Tab: XmR -->
+  <div class="tab-content" id="tab-xmr">
+    <div class="panel">
+      <h2>XmR – wartości indywidualne (X)</h2>
+      <div class="xmr-stats" id="xmr-stats"></div>
+      <div id="chart_xmr_x"></div>
+      <div class="chart-caption">
+        Punkty w kolejności zakończenia (Resolved). <span class="legend-line" style="background:var(--xmr-cl);"></span>średnia (CL)
+        &nbsp;&nbsp;<span class="legend-line" style="background:var(--xmr-limit);"></span>UNPL / LNPL (± 2,66·m̄R)
+        &nbsp;&nbsp;Czerwone punkty = sygnały specjalne (poza limitami). Kliknij punkt, aby wykluczyć.
+      </div>
     </div>
-  </div>
 
-  <div class="panel">
-    <h2>Percentyle czasu realizacji (dni)</h2>
-    <table id="ptable">
-      <thead>
-        <tr><th>Story Points</th><th>Liczba</th><th>Min</th><th>p50</th><th>p85</th><th>p95</th><th>Max</th></tr>
-      </thead>
-      <tbody id="ptbody"></tbody>
-    </table>
+    <div class="panel">
+      <h2>XmR – Moving Range (mR)</h2>
+      <div id="chart_xmr_mr"></div>
+      <div class="chart-caption">
+        mR<sub>i</sub> = |X<sub>i</sub> − X<sub>i-1</sub>|. <span class="legend-line" style="background:var(--xmr-cl);"></span>m̄R (średnia)
+        &nbsp;&nbsp;<span class="legend-line" style="background:var(--xmr-limit);"></span>URL (3,268·m̄R)
+        &nbsp;&nbsp;Czerwone punkty = sygnały specjalne (wybicie zmienności).
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>O wykresie XmR</h2>
+      <div style="font-size:13px; color:var(--text); line-height:1.6;">
+        Wykres XmR (Individuals &amp; Moving Range) służy do oceny <strong>stabilności procesu</strong>. Pokazuje, czy zmienność czasu realizacji jest <em>przewidywalna</em> (tylko przyczyny powszechne — wszystkie punkty w granicach), czy w procesie występują <em>przyczyny szczególne</em> (punkty poza granicami).
+        <ul style="margin:8px 0; padding-left:20px;">
+          <li><strong>CL</strong> (Center Line) = średnia z X</li>
+          <li><strong>m̄R</strong> = średnia z ruchomych zakresów |Xᵢ − Xᵢ₋₁|</li>
+          <li><strong>UNPL / LNPL</strong> = CL ± 2,66 · m̄R (limity naturalne procesu)</li>
+          <li><strong>URL</strong> = 3,268 · m̄R (górny limit dla mR)</li>
+        </ul>
+        Sygnały szczególne (punkty poza limitami) warto przeanalizować i rozważyć wykluczenie z bazy obliczeniowej — klikając je na wykresie.
+      </div>
+    </div>
   </div>
 </div>
 
@@ -138,43 +203,43 @@ let selectedSizes = new Set(SIZES);
 let excluded = new Set();
 let dateFrom = null;
 let dateTo = null;
+let activeTab = 'overview';
 
-// Determine date range
+// Tabs
+document.querySelectorAll('.tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    activeTab = t.dataset.tab;
+    document.getElementById('tab-' + activeTab).classList.add('active');
+    // Trigger resize so Plotly recomputes hidden chart dimensions
+    window.dispatchEvent(new Event('resize'));
+    render();
+  });
+});
+
+// Date range
 const allDates = DATA.map(d => d.r).sort();
-const minDate = allDates[0];
-const maxDate = allDates[allDates.length - 1];
-
-document.getElementById('dateFrom').min = minDate;
-document.getElementById('dateFrom').max = maxDate;
-document.getElementById('dateTo').min = minDate;
-document.getElementById('dateTo').max = maxDate;
+const minDate = allDates[0], maxDate = allDates[allDates.length-1];
+['dateFrom','dateTo'].forEach(id => {
+  const el = document.getElementById(id);
+  el.min = minDate; el.max = maxDate;
+});
 document.getElementById('dateFrom').value = minDate;
 document.getElementById('dateTo').value = maxDate;
-dateFrom = minDate;
-dateTo = maxDate;
-
-document.getElementById('dateFrom').addEventListener('change', e => {
-  dateFrom = e.target.value || null;
-  clearActivePreset();
-  render();
-});
-document.getElementById('dateTo').addEventListener('change', e => {
-  dateTo = e.target.value || null;
-  clearActivePreset();
-  render();
-});
-
+dateFrom = minDate; dateTo = maxDate;
+document.getElementById('dateFrom').addEventListener('change', e => { dateFrom = e.target.value || null; clearActivePreset(); render(); });
+document.getElementById('dateTo').addEventListener('change', e => { dateTo = e.target.value || null; clearActivePreset(); render(); });
 document.querySelectorAll('.preset').forEach(btn => {
   btn.addEventListener('click', () => {
     const days = parseInt(btn.dataset.days, 10);
     document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    if (days === 0) {
-      dateFrom = minDate; dateTo = maxDate;
-    } else {
+    if (days === 0) { dateFrom = minDate; dateTo = maxDate; }
+    else {
       const end = new Date(maxDate);
-      const start = new Date(end);
-      start.setDate(start.getDate() - days);
+      const start = new Date(end); start.setDate(start.getDate() - days);
       const startStr = start.toISOString().slice(0,10);
       dateFrom = startStr < minDate ? minDate : startStr;
       dateTo = maxDate;
@@ -184,10 +249,7 @@ document.querySelectorAll('.preset').forEach(btn => {
     render();
   });
 });
-
-function clearActivePreset() {
-  document.querySelectorAll('.preset').forEach(b => b.classList.remove('active'));
-}
+function clearActivePreset() { document.querySelectorAll('.preset').forEach(b => b.classList.remove('active')); }
 
 // SP chips
 const chipsEl = document.getElementById('chips');
@@ -203,7 +265,6 @@ SIZES.forEach(sp => {
   });
   chipsEl.appendChild(label);
 });
-
 function selectAll(on) {
   document.querySelectorAll('#chips input').forEach((cb, i) => {
     cb.checked = on;
@@ -222,37 +283,40 @@ function percentile(arr, p) {
   return lo === hi ? s[lo] : s[lo] + (s[hi]-s[lo])*(idx-lo);
 }
 function fmt(v) { return v==null ? '–' : v.toFixed(2); }
+function mean(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
 
 function jitter(key, sp) {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffffffff;
-  const r = ((h >>> 0) % 10000) / 10000;
-  return sp + (r - 0.5) * 0.55;
+  return sp + (((h>>>0) % 10000)/10000 - 0.5) * 0.55;
 }
 
 function getVisibleData() {
   return DATA.filter(d =>
-    selectedSizes.has(d.sp) &&
-    !excluded.has(d.k) &&
-    (!dateFrom || d.r >= dateFrom) &&
-    (!dateTo || d.r <= dateTo)
+    selectedSizes.has(d.sp) && !excluded.has(d.k) &&
+    (!dateFrom || d.r >= dateFrom) && (!dateTo || d.r <= dateTo)
   );
 }
-
 function getDateFilteredAllSizes() {
-  // For total counter — date range applied, sizes not (so user sees what's eligible)
-  return DATA.filter(d =>
-    (!dateFrom || d.r >= dateFrom) &&
-    (!dateTo || d.r <= dateTo)
-  );
+  return DATA.filter(d => (!dateFrom || d.r >= dateFrom) && (!dateTo || d.r <= dateTo));
+}
+
+function attachClickHandler(elId) {
+  const el = document.getElementById(elId);
+  el.removeAllListeners && el.removeAllListeners('plotly_click');
+  el.on('plotly_click', evt => {
+    if (evt.points && evt.points[0] && evt.points[0].customdata) {
+      excluded.add(evt.points[0].customdata);
+      render();
+    }
+  });
 }
 
 function renderScatter(visibleSizes, visibleData, allDays) {
   const traces = visibleSizes.map(sp => {
     const pts = visibleData.filter(d => d.sp === sp);
     return {
-      x: pts.map(d => d.r),
-      y: pts.map(d => d.d),
+      x: pts.map(d => d.r), y: pts.map(d => d.d),
       customdata: pts.map(d => d.k),
       mode:'markers', type:'scatter', name:`SP ${sp}`,
       marker:{ color: PALETTE[sp], size: 8, opacity: 0.7, line:{width:0.5, color:'#fff'} },
@@ -260,7 +324,6 @@ function renderScatter(visibleSizes, visibleData, allDays) {
       hoverinfo:'text'
     };
   });
-
   const shapes = [], annotations = [];
   if (allDays.length > 0) {
     [['p50',50,'#10b981'],['p85',85,'#f59e0b'],['p95',95,'#ef4444']].forEach(([lbl,p,color]) => {
@@ -269,34 +332,20 @@ function renderScatter(visibleSizes, visibleData, allDays) {
       annotations.push({ xref:'paper', x:1, y:v, xanchor:'left', yanchor:'middle', text:`${lbl}=${v.toFixed(1)}d`, showarrow:false, font:{size:11, color} });
     });
   }
-
   Plotly.react('chart_scatter', traces, {
-    paper_bgcolor:'#fff', plot_bgcolor:'#fff',
-    margin:{l:60, r:80, t:10, b:60},
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:80, t:10, b:60},
     xaxis:{ title:'Data zakończenia (Resolved)', type:'date', gridcolor:'#f0f2f5', zeroline:false },
     yaxis:{ title:'Czas realizacji (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
-    shapes, annotations,
-    showlegend:true, legend:{orientation:'h', y:-0.15, x:0.5, xanchor:'center'},
-    hovermode:'closest',
-    font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
-  }, {displaylogo:false, responsive:true}).then(() => {
-    const el = document.getElementById('chart_scatter');
-    el.removeAllListeners && el.removeAllListeners('plotly_click');
-    el.on('plotly_click', evt => {
-      if (evt.points && evt.points[0] && evt.points[0].customdata) {
-        excluded.add(evt.points[0].customdata);
-        render();
-      }
-    });
-  });
+    shapes, annotations, showlegend:true, legend:{orientation:'h', y:-0.15, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_scatter'));
 }
 
 function renderStrip(visibleSizes, visibleData, allDays) {
   const traces = visibleSizes.map(sp => {
     const pts = visibleData.filter(d => d.sp === sp);
     return {
-      x: pts.map(d => jitter(d.k, sp)),
-      y: pts.map(d => d.d),
+      x: pts.map(d => jitter(d.k, sp)), y: pts.map(d => d.d),
       customdata: pts.map(d => d.k),
       mode:'markers', type:'scatter', name:`SP ${sp}`,
       marker:{ color: PALETTE[sp], size: 7, opacity: 0.65, line:{width:0.5, color:'#fff'} },
@@ -304,7 +353,6 @@ function renderStrip(visibleSizes, visibleData, allDays) {
       hoverinfo:'text'
     };
   });
-
   const shapes = [], annotations = [];
   const half = 0.35;
   visibleSizes.forEach(sp => {
@@ -316,35 +364,20 @@ function renderStrip(visibleSizes, visibleData, allDays) {
       shapes.push({ type:'line', x0: sp-half, x1: sp+half, y0:v, y1:v, line:{color, width:2.5} });
     });
   });
-
   if (allDays.length > 0) {
-    const xmin = -0.8, xmax = 13.8;
     [['p50',50,'#10b981'],['p85',85,'#f59e0b'],['p95',95,'#ef4444']].forEach(([lbl,p,color]) => {
       const v = percentile(allDays, p);
-      shapes.push({ type:'line', x0:xmin, x1:xmax, y0:v, y1:v, line:{color, width:1.2, dash:'dash'}, opacity:0.6 });
-      annotations.push({ x:xmax, y:v, xanchor:'left', yanchor:'middle', text:`${lbl}=${v.toFixed(1)}`, showarrow:false, font:{size:10, color} });
+      shapes.push({ type:'line', x0:-0.8, x1:13.8, y0:v, y1:v, line:{color, width:1.2, dash:'dash'}, opacity:0.6 });
+      annotations.push({ x:13.8, y:v, xanchor:'left', yanchor:'middle', text:`${lbl}=${v.toFixed(1)}`, showarrow:false, font:{size:10, color} });
     });
   }
-
   Plotly.react('chart_strip', traces, {
-    paper_bgcolor:'#fff', plot_bgcolor:'#fff',
-    margin:{l:60, r:70, t:10, b:60},
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:70, t:10, b:60},
     xaxis:{ title:'Story Points', tickmode:'array', tickvals:SIZES, ticktext:SIZES.map(String), range:[-0.8, 13.8], gridcolor:'#f0f2f5', zeroline:false },
     yaxis:{ title:'Czas realizacji (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
-    shapes, annotations,
-    showlegend:true, legend:{orientation:'h', y:-0.15, x:0.5, xanchor:'center'},
-    hovermode:'closest',
-    font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
-  }, {displaylogo:false, responsive:true}).then(() => {
-    const el = document.getElementById('chart_strip');
-    el.removeAllListeners && el.removeAllListeners('plotly_click');
-    el.on('plotly_click', evt => {
-      if (evt.points && evt.points[0] && evt.points[0].customdata) {
-        excluded.add(evt.points[0].customdata);
-        render();
-      }
-    });
-  });
+    shapes, annotations, showlegend:true, legend:{orientation:'h', y:-0.15, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_strip'));
 }
 
 function renderTable(visibleSizes, visibleData, allDays) {
@@ -355,8 +388,7 @@ function renderTable(visibleSizes, visibleData, allDays) {
     if (days.length === 0) return;
     const tr = document.createElement('tr');
     tr.innerHTML = `<td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${PALETTE[sp]};margin-right:6px;vertical-align:middle"></span>SP ${sp}</td>
-      <td>${days.length}</td>
-      <td>${fmt(Math.min(...days))}</td>
+      <td>${days.length}</td><td>${fmt(Math.min(...days))}</td>
       <td class="p50-cell">${fmt(percentile(days,50))}</td>
       <td class="p85-cell">${fmt(percentile(days,85))}</td>
       <td class="p95-cell">${fmt(percentile(days,95))}</td>
@@ -366,8 +398,7 @@ function renderTable(visibleSizes, visibleData, allDays) {
   if (allDays.length > 0) {
     const tr = document.createElement('tr');
     tr.className = 'total-row';
-    tr.innerHTML = `<td>Wspólny (wybrane)</td>
-      <td>${allDays.length}</td>
+    tr.innerHTML = `<td>Wspólny (wybrane)</td><td>${allDays.length}</td>
       <td>${fmt(Math.min(...allDays))}</td>
       <td class="p50-cell">${fmt(percentile(allDays,50))}</td>
       <td class="p85-cell">${fmt(percentile(allDays,85))}</td>
@@ -377,28 +408,161 @@ function renderTable(visibleSizes, visibleData, allDays) {
   }
 }
 
+function renderXmR(visibleData) {
+  // Sort chronologically: by date, then key as tiebreaker
+  const ordered = [...visibleData].sort((a,b) => {
+    if (a.r !== b.r) return a.r < b.r ? -1 : 1;
+    return a.k < b.k ? -1 : 1;
+  });
+  const statsEl = document.getElementById('xmr-stats');
+
+  if (ordered.length < 2) {
+    statsEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Za mało danych do wykresu XmR (potrzeba ≥ 2 punktów).</div>';
+    Plotly.react('chart_xmr_x', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    Plotly.react('chart_xmr_mr', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    return;
+  }
+
+  const xs = ordered.map(d => d.d);
+  const keys = ordered.map(d => d.k);
+  const dates = ordered.map(d => d.r);
+  const idx = ordered.map((_, i) => i + 1);
+
+  const mR = [];
+  for (let i = 1; i < xs.length; i++) mR.push(Math.abs(xs[i] - xs[i-1]));
+
+  const X_bar = mean(xs);
+  const mR_bar = mean(mR);
+  const UNPL = X_bar + 2.66 * mR_bar;
+  const LNPL_raw = X_bar - 2.66 * mR_bar;
+  const LNPL = Math.max(0, LNPL_raw); // cycle time can't be negative
+  const URL = 3.268 * mR_bar;
+
+  // Signals
+  const xSignals = xs.map((v,i) => v > UNPL || v < LNPL_raw);
+  const mrSignals = mR.map(v => v > URL);
+  const signalCount = xSignals.filter(s=>s).length + mrSignals.filter(s=>s).length;
+
+  // Stats panel
+  statsEl.innerHTML = `
+    <div class="xmr-stat"><div class="xmr-stat-label">Liczba punktów</div><div class="xmr-stat-value">${xs.length}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Średnia X (CL)</div><div class="xmr-stat-value">${X_bar.toFixed(2)} d</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">m̄R</div><div class="xmr-stat-value">${mR_bar.toFixed(2)} d</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">UNPL</div><div class="xmr-stat-value">${UNPL.toFixed(2)} d</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">LNPL</div><div class="xmr-stat-value">${LNPL.toFixed(2)} d${LNPL_raw < 0 ? ' *' : ''}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">URL (mR)</div><div class="xmr-stat-value">${URL.toFixed(2)} d</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały szczególne</div><div class="xmr-stat-value ${signalCount>0?'signal':''}">${signalCount}</div></div>
+  `;
+
+  // X chart
+  const normalPts = ordered.map((d,i) => ({...d, i:i+1, sig:xSignals[i]})).filter(p => !p.sig);
+  const signalPts = ordered.map((d,i) => ({...d, i:i+1, sig:xSignals[i]})).filter(p => p.sig);
+
+  const xTraces = [
+    {
+      x: idx, y: xs, mode:'lines', type:'scatter', name:'X',
+      line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false
+    },
+    {
+      x: normalPts.map(p => p.i), y: normalPts.map(p => p.d),
+      customdata: normalPts.map(p => p.k),
+      mode:'markers', type:'scatter', name:'X (normalne)',
+      marker:{color:'#2563eb', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
+      text: normalPts.map(p => `#${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text'
+    },
+    {
+      x: signalPts.map(p => p.i), y: signalPts.map(p => p.d),
+      customdata: signalPts.map(p => p.k),
+      mode:'markers', type:'scatter', name:'Sygnał szczególny',
+      marker:{color:'#ef4444', size:10, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'circle'},
+      text: signalPts.map(p => `⚠ #${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text'
+    }
+  ];
+
+  const xShapes = [
+    { type:'line', xref:'paper', x0:0, x1:1, y0:X_bar, y1:X_bar, line:{color:'var(--xmr-cl)'.replace('var(--xmr-cl)','#2563eb'), width:1.6} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:UNPL, y1:UNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:LNPL, y1:LNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+  ];
+  const xAnnots = [
+    { xref:'paper', x:1, y:X_bar, xanchor:'left', text:`CL=${X_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+    { xref:'paper', x:1, y:UNPL, xanchor:'left', text:`UNPL=${UNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} },
+    { xref:'paper', x:1, y:LNPL, xanchor:'left', text:`LNPL=${LNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+  ];
+
+  Plotly.react('chart_xmr_x', xTraces, {
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:90, t:10, b:50},
+    xaxis:{ title:'Kolejność zakończenia', gridcolor:'#f0f2f5', zeroline:false },
+    yaxis:{ title:'Czas realizacji X (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
+    shapes: xShapes, annotations: xAnnots,
+    showlegend:true, legend:{orientation:'h', y:-0.18, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_xmr_x'));
+
+  // mR chart
+  const mrIdx = idx.slice(1); // mR has length n-1, aligned with index 2..n
+  const mrKeys = keys.slice(1);
+  const mrDates = dates.slice(1);
+  const mrSps = ordered.slice(1).map(d => d.sp);
+
+  const mrNormal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sp:mrSps[i], sig:mrSignals[i]})).filter(p => !p.sig);
+  const mrSignal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sp:mrSps[i], sig:mrSignals[i]})).filter(p => p.sig);
+
+  const mrTraces = [
+    { x: mrIdx, y: mR, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
+    {
+      x: mrNormal.map(p=>p.i), y: mrNormal.map(p=>p.v),
+      customdata: mrNormal.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'mR',
+      marker:{color:'#7c3aed', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
+      text: mrNormal.map(p => `mR #${p.i} (po ${p.k})<br>${p.v.toFixed(2)} dni<br>${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text'
+    },
+    {
+      x: mrSignal.map(p=>p.i), y: mrSignal.map(p=>p.v),
+      customdata: mrSignal.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'Sygnał szczególny',
+      marker:{color:'#ef4444', size:10, opacity:0.95, line:{width:1, color:'#fff'}},
+      text: mrSignal.map(p => `⚠ mR #${p.i} (po ${p.k})<br>${p.v.toFixed(2)} dni<br>${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text'
+    }
+  ];
+  const mrShapes = [
+    { type:'line', xref:'paper', x0:0, x1:1, y0:mR_bar, y1:mR_bar, line:{color:'#2563eb', width:1.6} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:URL, y1:URL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+  ];
+  const mrAnnots = [
+    { xref:'paper', x:1, y:mR_bar, xanchor:'left', text:`m̄R=${mR_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+    { xref:'paper', x:1, y:URL, xanchor:'left', text:`URL=${URL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+  ];
+
+  Plotly.react('chart_xmr_mr', mrTraces, {
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:90, t:10, b:50},
+    xaxis:{ title:'Kolejność zakończenia', gridcolor:'#f0f2f5', zeroline:false },
+    yaxis:{ title:'Moving Range (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
+    shapes: mrShapes, annotations: mrAnnots,
+    showlegend:true, legend:{orientation:'h', y:-0.25, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_xmr_mr'));
+}
+
 function renderExcludedList() {
   const list = document.getElementById('excluded-list');
   list.innerHTML = '';
-  const arr = [...excluded].sort();
-  arr.forEach(k => {
+  [...excluded].sort().forEach(k => {
     const d = DATA.find(x => x.k === k);
     const tag = document.createElement('span');
     tag.className = 'excluded-tag';
     tag.innerHTML = `${k} <span style="color:var(--muted)">·</span> SP ${d.sp} <span style="color:var(--muted)">·</span> ${d.d.toFixed(1)}d <button title="Przywróć">✕</button>`;
-    tag.querySelector('button').addEventListener('click', () => {
-      excluded.delete(k);
-      render();
-    });
+    tag.querySelector('button').addEventListener('click', () => { excluded.delete(k); render(); });
     list.appendChild(tag);
   });
   document.getElementById('btn-restore-all').style.display = excluded.size === 0 ? 'none' : '';
 }
 
-function restoreAll() {
-  excluded.clear();
-  render();
-}
+function restoreAll() { excluded.clear(); render(); }
 
 function render() {
   const visibleSizes = SIZES.filter(s => selectedSizes.has(s));
@@ -409,9 +573,13 @@ function render() {
   document.getElementById('stat-excluded').textContent = excluded.size;
   document.getElementById('stat-total').textContent = getDateFilteredAllSizes().length;
 
-  renderScatter(visibleSizes, visibleData, allDays);
-  renderStrip(visibleSizes, visibleData, allDays);
-  renderTable(visibleSizes, visibleData, allDays);
+  if (activeTab === 'overview') {
+    renderScatter(visibleSizes, visibleData, allDays);
+    renderStrip(visibleSizes, visibleData, allDays);
+    renderTable(visibleSizes, visibleData, allDays);
+  } else if (activeTab === 'xmr') {
+    renderXmR(visibleData);
+  }
   renderExcludedList();
 }
 
