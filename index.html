@@ -10,7 +10,7 @@
     --text: #1f2937; --muted: #6b7280; --accent: #2563eb;
     --p50: #10b981; --p85: #f59e0b; --p95: #ef4444;
     --danger: #dc2626;
-    --xmr-cl: #2563eb; --xmr-limit: #ef4444;
+    --moderate: #f59e0b;
   }
   * { box-sizing: border-box; }
   body { margin:0; padding:24px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--text); }
@@ -37,10 +37,10 @@
   .preset:hover { background:#f3f4f6; color: var(--text); }
   .preset.active { background:#eff6ff; border-color:var(--accent); color:var(--accent); }
   input[type=date] { padding: 5px 8px; border: 1px solid var(--border); border-radius: 6px; font-size: 13px; font-family: inherit; }
-  #chart_scatter, #chart_strip, #chart_xmr_x, #chart_xmr_mr { width: 100%; cursor: crosshair; }
+  .chart { width: 100%; cursor: crosshair; }
   #chart_scatter, #chart_strip { height: 540px; }
-  #chart_xmr_x { height: 380px; }
-  #chart_xmr_mr { height: 260px; }
+  .chart-x { height: 400px; }
+  .chart-mr { height: 260px; }
   table { width:100%; border-collapse: collapse; font-size: 13px; }
   th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--border); }
   th:first-child, td:first-child { text-align: left; }
@@ -50,6 +50,7 @@
   .p85-cell { color: var(--p85); font-weight: 600; }
   .p95-cell { color: var(--p95); font-weight: 600; }
   .legend-line { display:inline-block; width:18px; height:2px; vertical-align:middle; margin-right:4px; }
+  .legend-dot { display:inline-block; width:10px; height:10px; border-radius:50%; vertical-align:middle; margin-right:4px; }
   .chart-caption { font-size:12px; color:var(--muted); margin-top:8px; }
   .excluded-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; max-height:120px; overflow-y:auto; }
   .excluded-tag { display:inline-flex; align-items:center; gap:6px; padding:4px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:6px; font-size:12px; color: var(--danger); }
@@ -58,27 +59,24 @@
   .stats-mini { display:flex; gap:24px; font-size:13px; color: var(--muted); }
   .stats-mini strong { color: var(--text); font-weight: 600; }
   .help-text { font-size: 12px; color: var(--muted); margin-top: 6px; }
-
-  /* Tabs */
-  .tabs { display:flex; gap:4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+  .tabs { display:flex; gap:4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; flex-wrap: wrap; }
   .tab { padding: 10px 18px; cursor: pointer; font-size: 14px; font-weight: 500; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; }
   .tab:hover { color: var(--text); }
   .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .tab-content { display: none; }
   .tab-content.active { display: block; }
-
-  /* XmR stats */
-  .xmr-stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .xmr-stats { display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .xmr-stat { padding: 12px; background:#f9fafb; border-radius:8px; }
   .xmr-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
   .xmr-stat-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
   .xmr-stat-value.signal { color: var(--danger); }
+  .xmr-stat-value.moderate { color: var(--moderate); }
 </style>
 </head>
 <body>
 <div class="container">
   <h1>Czasy realizacji zadań – FSI Zespół 1</h1>
-  <div class="subtitle">Scatterplot + XmR control chart · źródło: Jira</div>
+  <div class="subtitle">Scatterplot + XmR control chart + XmR z strefami Sigma · źródło: Jira</div>
 
   <div class="panel">
     <div class="panel-section">
@@ -89,7 +87,6 @@
         <button class="btn" onclick="selectAll(false)">Żadne</button>
       </div>
     </div>
-
     <div class="panel-section">
       <div class="row">
         <span class="row-label">Zakres dat (Resolved):</span>
@@ -104,7 +101,6 @@
         <button class="preset" data-days="0">Wszystko</button>
       </div>
     </div>
-
     <div class="panel-section">
       <div class="row" style="justify-content:space-between;">
         <div class="stats-mini">
@@ -121,14 +117,15 @@
 
   <div class="tabs">
     <div class="tab active" data-tab="overview">Scatter + rozkład</div>
-    <div class="tab" data-tab="xmr">XmR (Individuals &amp; Moving Range)</div>
+    <div class="tab" data-tab="xmr">XmR</div>
+    <div class="tab" data-tab="xmr2">XmR ze strefami Sigma</div>
   </div>
 
-  <!-- Tab: Overview -->
+  <!-- TAB 1: OVERVIEW -->
   <div class="tab-content active" id="tab-overview">
     <div class="panel">
       <h2>Scatterplot: czas realizacji w czasie</h2>
-      <div id="chart_scatter"></div>
+      <div id="chart_scatter" class="chart"></div>
       <div class="chart-caption">
         <span class="legend-line" style="background:var(--p50);"></span>p50
         &nbsp;&nbsp;<span class="legend-line" style="background:var(--p85);"></span>p85
@@ -136,60 +133,79 @@
         &nbsp;&nbsp;— linie przerywane: wspólne. Kliknij punkt, aby wykluczyć.
       </div>
     </div>
-
     <div class="panel">
       <h2>Rozkład per rozmiar (Story Points)</h2>
-      <div id="chart_strip"></div>
+      <div id="chart_strip" class="chart"></div>
       <div class="chart-caption">
         Linie ciągłe: p50/p85/p95 per rozmiar &nbsp;·&nbsp; linie przerywane: percentyle wspólne. Kliknij punkt, aby wykluczyć.
       </div>
     </div>
-
     <div class="panel">
       <h2>Percentyle czasu realizacji (dni)</h2>
       <table id="ptable">
-        <thead>
-          <tr><th>Story Points</th><th>Liczba</th><th>Min</th><th>p50</th><th>p85</th><th>p95</th><th>Max</th></tr>
-        </thead>
+        <thead><tr><th>Story Points</th><th>Liczba</th><th>Min</th><th>p50</th><th>p85</th><th>p95</th><th>Max</th></tr></thead>
         <tbody id="ptbody"></tbody>
       </table>
     </div>
   </div>
 
-  <!-- Tab: XmR -->
+  <!-- TAB 2: XmR -->
   <div class="tab-content" id="tab-xmr">
     <div class="panel">
       <h2>XmR – wartości indywidualne (X)</h2>
       <div class="xmr-stats" id="xmr-stats"></div>
-      <div id="chart_xmr_x"></div>
+      <div id="chart_xmr_x" class="chart chart-x"></div>
       <div class="chart-caption">
-        Punkty w kolejności zakończenia (Resolved). <span class="legend-line" style="background:var(--xmr-cl);"></span>średnia (CL)
-        &nbsp;&nbsp;<span class="legend-line" style="background:var(--xmr-limit);"></span>UNPL / LNPL (± 2,66·m̄R)
-        &nbsp;&nbsp;Czerwone punkty = sygnały specjalne (poza limitami). Kliknij punkt, aby wykluczyć.
+        Punkty w kolejności zakończenia. <span class="legend-line" style="background:#2563eb;"></span>średnia (CL)
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>UNPL / LNPL (± 2,66·m̄R)
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#ef4444;"></span>sygnały specjalne. Kliknij punkt, aby wykluczyć.
       </div>
     </div>
-
     <div class="panel">
       <h2>XmR – Moving Range (mR)</h2>
-      <div id="chart_xmr_mr"></div>
+      <div id="chart_xmr_mr" class="chart chart-mr"></div>
       <div class="chart-caption">
-        mR<sub>i</sub> = |X<sub>i</sub> − X<sub>i-1</sub>|. <span class="legend-line" style="background:var(--xmr-cl);"></span>m̄R (średnia)
-        &nbsp;&nbsp;<span class="legend-line" style="background:var(--xmr-limit);"></span>URL (3,268·m̄R)
-        &nbsp;&nbsp;Czerwone punkty = sygnały specjalne (wybicie zmienności).
+        mR<sub>i</sub> = |X<sub>i</sub> − X<sub>i-1</sub>|. <span class="legend-line" style="background:#2563eb;"></span>m̄R
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>URL (3,268·m̄R)
       </div>
     </div>
+  </div>
 
+  <!-- TAB 3: XmR with Sigma zones -->
+  <div class="tab-content" id="tab-xmr2">
     <div class="panel">
-      <h2>O wykresie XmR</h2>
-      <div style="font-size:13px; color:var(--text); line-height:1.6;">
-        Wykres XmR (Individuals &amp; Moving Range) służy do oceny <strong>stabilności procesu</strong>. Pokazuje, czy zmienność czasu realizacji jest <em>przewidywalna</em> (tylko przyczyny powszechne — wszystkie punkty w granicach), czy w procesie występują <em>przyczyny szczególne</em> (punkty poza granicami).
+      <h2>XmR ze strefami Sigma – wartości indywidualne (X)</h2>
+      <div class="xmr-stats" id="xmr2-stats"></div>
+      <div id="chart_xmr2_x" class="chart chart-x"></div>
+      <div class="chart-caption">
+        <span class="legend-line" style="background:#2563eb;"></span>CL (średnia)
+        &nbsp;&nbsp;<span class="legend-line" style="background:#fbbf24;"></span>Sigma 1 (CL + 1/3 zakresu)
+        &nbsp;&nbsp;<span class="legend-line" style="background:#f97316;"></span>Sigma 2 (CL + 2/3 zakresu)
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>Sigma 3 / UNPL
+        <br>
+        <span class="legend-dot" style="background:#ef4444;"></span>sygnał specjalny (poza UNPL/LNPL)
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#f59e0b;"></span>sygnał umiarkowany (2 z 3 między Sigma 2 a Sigma 3)
+      </div>
+    </div>
+    <div class="panel">
+      <h2>XmR ze strefami – Moving Range (mR)</h2>
+      <div id="chart_xmr2_mr" class="chart chart-mr"></div>
+      <div class="chart-caption">
+        <span class="legend-line" style="background:#2563eb;"></span>m̄R
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>URL (3,268·m̄R)
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Reguły sygnałów</h2>
+      <div style="font-size:13px; line-height:1.6;">
+        Obszar między średnią (CL) a UNPL został podzielony na trzy równe strefy:
         <ul style="margin:8px 0; padding-left:20px;">
-          <li><strong>CL</strong> (Center Line) = średnia z X</li>
-          <li><strong>m̄R</strong> = średnia z ruchomych zakresów |Xᵢ − Xᵢ₋₁|</li>
-          <li><strong>UNPL / LNPL</strong> = CL ± 2,66 · m̄R (limity naturalne procesu)</li>
-          <li><strong>URL</strong> = 3,268 · m̄R (górny limit dla mR)</li>
+          <li><strong>Sigma 1</strong> = CL + 1/3 · (UNPL − CL)</li>
+          <li><strong>Sigma 2</strong> = CL + 2/3 · (UNPL − CL)</li>
+          <li><strong>Sigma 3</strong> = UNPL (CL + 3/3 · (UNPL − CL))</li>
         </ul>
-        Sygnały szczególne (punkty poza limitami) warto przeanalizować i rozważyć wykluczenie z bazy obliczeniowej — klikając je na wykresie.
+        <strong>Sygnał specjalny</strong> (czerwony): punkt powyżej UNPL lub poniżej LNPL.<br>
+        <strong>Sygnał umiarkowany</strong> (pomarańczowy): w dowolnym oknie 3 kolejnych punktów co najmniej <strong>2 punkty</strong> znajdują się <strong>powyżej Sigma 2 i poniżej (lub równe) Sigma 3</strong>. Oznaczane są wszystkie punkty z tego okna spełniające warunek.
       </div>
     </div>
   </div>
@@ -201,11 +217,9 @@ const SIZES = [0,1,2,3,5,8,13];
 const PALETTE = {0:'#94a3b8',1:'#60a5fa',2:'#34d399',3:'#fbbf24',5:'#fb923c',8:'#f472b6',13:'#a78bfa'};
 let selectedSizes = new Set(SIZES);
 let excluded = new Set();
-let dateFrom = null;
-let dateTo = null;
+let dateFrom = null, dateTo = null;
 let activeTab = 'overview';
 
-// Tabs
 document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
@@ -213,19 +227,14 @@ document.querySelectorAll('.tab').forEach(t => {
     t.classList.add('active');
     activeTab = t.dataset.tab;
     document.getElementById('tab-' + activeTab).classList.add('active');
-    // Trigger resize so Plotly recomputes hidden chart dimensions
     window.dispatchEvent(new Event('resize'));
     render();
   });
 });
 
-// Date range
 const allDates = DATA.map(d => d.r).sort();
 const minDate = allDates[0], maxDate = allDates[allDates.length-1];
-['dateFrom','dateTo'].forEach(id => {
-  const el = document.getElementById(id);
-  el.min = minDate; el.max = maxDate;
-});
+['dateFrom','dateTo'].forEach(id => { const el = document.getElementById(id); el.min = minDate; el.max = maxDate; });
 document.getElementById('dateFrom').value = minDate;
 document.getElementById('dateTo').value = maxDate;
 dateFrom = minDate; dateTo = maxDate;
@@ -251,7 +260,6 @@ document.querySelectorAll('.preset').forEach(btn => {
 });
 function clearActivePreset() { document.querySelectorAll('.preset').forEach(b => b.classList.remove('active')); }
 
-// SP chips
 const chipsEl = document.getElementById('chips');
 SIZES.forEach(sp => {
   const count = DATA.filter(d => d.sp === sp).length;
@@ -284,13 +292,11 @@ function percentile(arr, p) {
 }
 function fmt(v) { return v==null ? '–' : v.toFixed(2); }
 function mean(arr) { return arr.reduce((a,b)=>a+b,0)/arr.length; }
-
 function jitter(key, sp) {
   let h = 0;
   for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffffffff;
   return sp + (((h>>>0) % 10000)/10000 - 0.5) * 0.55;
 }
-
 function getVisibleData() {
   return DATA.filter(d =>
     selectedSizes.has(d.sp) && !excluded.has(d.k) &&
@@ -300,7 +306,6 @@ function getVisibleData() {
 function getDateFilteredAllSizes() {
   return DATA.filter(d => (!dateFrom || d.r >= dateFrom) && (!dateTo || d.r <= dateTo));
 }
-
 function attachClickHandler(elId) {
   const el = document.getElementById(elId);
   el.removeAllListeners && el.removeAllListeners('plotly_click');
@@ -312,17 +317,15 @@ function attachClickHandler(elId) {
   });
 }
 
+// ---------- Overview ----------
 function renderScatter(visibleSizes, visibleData, allDays) {
   const traces = visibleSizes.map(sp => {
     const pts = visibleData.filter(d => d.sp === sp);
-    return {
-      x: pts.map(d => d.r), y: pts.map(d => d.d),
-      customdata: pts.map(d => d.k),
+    return { x: pts.map(d => d.r), y: pts.map(d => d.d), customdata: pts.map(d => d.k),
       mode:'markers', type:'scatter', name:`SP ${sp}`,
       marker:{ color: PALETTE[sp], size: 8, opacity: 0.7, line:{width:0.5, color:'#fff'} },
       text: pts.map(d => `${d.k}<br>SP: ${d.sp}<br>${d.d.toFixed(2)} dni<br>Resolved: ${d.r}<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    };
+      hoverinfo:'text' };
   });
   const shapes = [], annotations = [];
   if (allDays.length > 0) {
@@ -344,24 +347,20 @@ function renderScatter(visibleSizes, visibleData, allDays) {
 function renderStrip(visibleSizes, visibleData, allDays) {
   const traces = visibleSizes.map(sp => {
     const pts = visibleData.filter(d => d.sp === sp);
-    return {
-      x: pts.map(d => jitter(d.k, sp)), y: pts.map(d => d.d),
-      customdata: pts.map(d => d.k),
+    return { x: pts.map(d => jitter(d.k, sp)), y: pts.map(d => d.d), customdata: pts.map(d => d.k),
       mode:'markers', type:'scatter', name:`SP ${sp}`,
       marker:{ color: PALETTE[sp], size: 7, opacity: 0.65, line:{width:0.5, color:'#fff'} },
       text: pts.map(d => `${d.k}<br>SP: ${d.sp}<br>${d.d.toFixed(2)} dni<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    };
+      hoverinfo:'text' };
   });
   const shapes = [], annotations = [];
-  const half = 0.35;
   visibleSizes.forEach(sp => {
     const days = visibleData.filter(d => d.sp === sp).map(d => d.d);
     if (days.length === 0) return;
     [[50,'#10b981'],[85,'#f59e0b'],[95,'#ef4444']].forEach(([p,color]) => {
       const v = percentile(days, p);
       if (v == null) return;
-      shapes.push({ type:'line', x0: sp-half, x1: sp+half, y0:v, y1:v, line:{color, width:2.5} });
+      shapes.push({ type:'line', x0: sp-0.35, x1: sp+0.35, y0:v, y1:v, line:{color, width:2.5} });
     });
   });
   if (allDays.length > 0) {
@@ -408,42 +407,43 @@ function renderTable(visibleSizes, visibleData, allDays) {
   }
 }
 
-function renderXmR(visibleData) {
-  // Sort chronologically: by date, then key as tiebreaker
+// ---------- XmR core calc ----------
+function calcXmR(visibleData) {
   const ordered = [...visibleData].sort((a,b) => {
     if (a.r !== b.r) return a.r < b.r ? -1 : 1;
     return a.k < b.k ? -1 : 1;
   });
-  const statsEl = document.getElementById('xmr-stats');
-
-  if (ordered.length < 2) {
-    statsEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Za mało danych do wykresu XmR (potrzeba ≥ 2 punktów).</div>';
-    Plotly.react('chart_xmr_x', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
-    Plotly.react('chart_xmr_mr', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
-    return;
-  }
-
+  if (ordered.length < 2) return null;
   const xs = ordered.map(d => d.d);
-  const keys = ordered.map(d => d.k);
-  const dates = ordered.map(d => d.r);
-  const idx = ordered.map((_, i) => i + 1);
-
   const mR = [];
   for (let i = 1; i < xs.length; i++) mR.push(Math.abs(xs[i] - xs[i-1]));
-
   const X_bar = mean(xs);
   const mR_bar = mean(mR);
   const UNPL = X_bar + 2.66 * mR_bar;
   const LNPL_raw = X_bar - 2.66 * mR_bar;
-  const LNPL = Math.max(0, LNPL_raw); // cycle time can't be negative
+  const LNPL = Math.max(0, LNPL_raw);
   const URL = 3.268 * mR_bar;
+  const sigma1 = X_bar + (UNPL - X_bar) / 3;
+  const sigma2 = X_bar + 2 * (UNPL - X_bar) / 3;
+  return { ordered, xs, mR, X_bar, mR_bar, UNPL, LNPL, LNPL_raw, URL, sigma1, sigma2 };
+}
 
-  // Signals
-  const xSignals = xs.map((v,i) => v > UNPL || v < LNPL_raw);
+// ---------- Tab 2: basic XmR ----------
+function renderXmR(visibleData) {
+  const c = calcXmR(visibleData);
+  const statsEl = document.getElementById('xmr-stats');
+  if (!c) {
+    statsEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Za mało danych (≥ 2 punktów).</div>';
+    Plotly.react('chart_xmr_x', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    Plotly.react('chart_xmr_mr', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    return;
+  }
+  const { ordered, xs, mR, X_bar, mR_bar, UNPL, LNPL, LNPL_raw, URL } = c;
+  const idx = ordered.map((_, i) => i + 1);
+  const xSignals = xs.map(v => v > UNPL || v < LNPL_raw);
   const mrSignals = mR.map(v => v > URL);
   const signalCount = xSignals.filter(s=>s).length + mrSignals.filter(s=>s).length;
 
-  // Stats panel
   statsEl.innerHTML = `
     <div class="xmr-stat"><div class="xmr-stat-label">Liczba punktów</div><div class="xmr-stat-value">${xs.length}</div></div>
     <div class="xmr-stat"><div class="xmr-stat-label">Średnia X (CL)</div><div class="xmr-stat-value">${X_bar.toFixed(2)} d</div></div>
@@ -451,101 +451,192 @@ function renderXmR(visibleData) {
     <div class="xmr-stat"><div class="xmr-stat-label">UNPL</div><div class="xmr-stat-value">${UNPL.toFixed(2)} d</div></div>
     <div class="xmr-stat"><div class="xmr-stat-label">LNPL</div><div class="xmr-stat-value">${LNPL.toFixed(2)} d${LNPL_raw < 0 ? ' *' : ''}</div></div>
     <div class="xmr-stat"><div class="xmr-stat-label">URL (mR)</div><div class="xmr-stat-value">${URL.toFixed(2)} d</div></div>
-    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały szczególne</div><div class="xmr-stat-value ${signalCount>0?'signal':''}">${signalCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały specjalne</div><div class="xmr-stat-value ${signalCount>0?'signal':''}">${signalCount}</div></div>
   `;
 
-  // X chart
   const normalPts = ordered.map((d,i) => ({...d, i:i+1, sig:xSignals[i]})).filter(p => !p.sig);
   const signalPts = ordered.map((d,i) => ({...d, i:i+1, sig:xSignals[i]})).filter(p => p.sig);
-
   const xTraces = [
-    {
-      x: idx, y: xs, mode:'lines', type:'scatter', name:'X',
-      line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false
-    },
-    {
-      x: normalPts.map(p => p.i), y: normalPts.map(p => p.d),
-      customdata: normalPts.map(p => p.k),
-      mode:'markers', type:'scatter', name:'X (normalne)',
+    { x: idx, y: xs, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
+    { x: normalPts.map(p => p.i), y: normalPts.map(p => p.d), customdata: normalPts.map(p => p.k),
+      mode:'markers', type:'scatter', name:'X',
       marker:{color:'#2563eb', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
       text: normalPts.map(p => `#${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    },
-    {
-      x: signalPts.map(p => p.i), y: signalPts.map(p => p.d),
-      customdata: signalPts.map(p => p.k),
-      mode:'markers', type:'scatter', name:'Sygnał szczególny',
-      marker:{color:'#ef4444', size:10, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'circle'},
+      hoverinfo:'text' },
+    { x: signalPts.map(p => p.i), y: signalPts.map(p => p.d), customdata: signalPts.map(p => p.k),
+      mode:'markers', type:'scatter', name:'Sygnał specjalny',
+      marker:{color:'#ef4444', size:10, opacity:0.95, line:{width:1, color:'#fff'}},
       text: signalPts.map(p => `⚠ #${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    }
+      hoverinfo:'text' }
   ];
-
-  const xShapes = [
-    { type:'line', xref:'paper', x0:0, x1:1, y0:X_bar, y1:X_bar, line:{color:'var(--xmr-cl)'.replace('var(--xmr-cl)','#2563eb'), width:1.6} },
-    { type:'line', xref:'paper', x0:0, x1:1, y0:UNPL, y1:UNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} },
-    { type:'line', xref:'paper', x0:0, x1:1, y0:LNPL, y1:LNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
-  ];
-  const xAnnots = [
-    { xref:'paper', x:1, y:X_bar, xanchor:'left', text:`CL=${X_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
-    { xref:'paper', x:1, y:UNPL, xanchor:'left', text:`UNPL=${UNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} },
-    { xref:'paper', x:1, y:LNPL, xanchor:'left', text:`LNPL=${LNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
-  ];
-
   Plotly.react('chart_xmr_x', xTraces, {
     paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:90, t:10, b:50},
     xaxis:{ title:'Kolejność zakończenia', gridcolor:'#f0f2f5', zeroline:false },
     yaxis:{ title:'Czas realizacji X (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
-    shapes: xShapes, annotations: xAnnots,
+    shapes:[
+      { type:'line', xref:'paper', x0:0, x1:1, y0:X_bar, y1:X_bar, line:{color:'#2563eb', width:1.6} },
+      { type:'line', xref:'paper', x0:0, x1:1, y0:UNPL, y1:UNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} },
+      { type:'line', xref:'paper', x0:0, x1:1, y0:LNPL, y1:LNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+    ],
+    annotations:[
+      { xref:'paper', x:1, y:X_bar, xanchor:'left', text:`CL=${X_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+      { xref:'paper', x:1, y:UNPL, xanchor:'left', text:`UNPL=${UNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} },
+      { xref:'paper', x:1, y:LNPL, xanchor:'left', text:`LNPL=${LNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+    ],
     showlegend:true, legend:{orientation:'h', y:-0.18, x:0.5, xanchor:'center'},
     hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
   }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_xmr_x'));
 
-  // mR chart
-  const mrIdx = idx.slice(1); // mR has length n-1, aligned with index 2..n
-  const mrKeys = keys.slice(1);
-  const mrDates = dates.slice(1);
-  const mrSps = ordered.slice(1).map(d => d.sp);
+  renderMR('chart_xmr_mr', ordered, mR, mR_bar, URL, mrSignals);
+}
 
-  const mrNormal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sp:mrSps[i], sig:mrSignals[i]})).filter(p => !p.sig);
-  const mrSignal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sp:mrSps[i], sig:mrSignals[i]})).filter(p => p.sig);
-
-  const mrTraces = [
+function renderMR(elId, ordered, mR, mR_bar, URL, mrSignals) {
+  const mrIdx = ordered.slice(1).map((_,i) => i+2);
+  const mrKeys = ordered.slice(1).map(d => d.k);
+  const mrDates = ordered.slice(1).map(d => d.r);
+  const mrNormal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sig:mrSignals[i]})).filter(p => !p.sig);
+  const mrSignal = mR.map((v,i) => ({v, i:mrIdx[i], k:mrKeys[i], r:mrDates[i], sig:mrSignals[i]})).filter(p => p.sig);
+  const traces = [
     { x: mrIdx, y: mR, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
-    {
-      x: mrNormal.map(p=>p.i), y: mrNormal.map(p=>p.v),
-      customdata: mrNormal.map(p=>p.k),
+    { x: mrNormal.map(p=>p.i), y: mrNormal.map(p=>p.v), customdata: mrNormal.map(p=>p.k),
       mode:'markers', type:'scatter', name:'mR',
       marker:{color:'#7c3aed', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
       text: mrNormal.map(p => `mR #${p.i} (po ${p.k})<br>${p.v.toFixed(2)} dni<br>${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    },
-    {
-      x: mrSignal.map(p=>p.i), y: mrSignal.map(p=>p.v),
-      customdata: mrSignal.map(p=>p.k),
-      mode:'markers', type:'scatter', name:'Sygnał szczególny',
+      hoverinfo:'text' },
+    { x: mrSignal.map(p=>p.i), y: mrSignal.map(p=>p.v), customdata: mrSignal.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'Sygnał specjalny',
       marker:{color:'#ef4444', size:10, opacity:0.95, line:{width:1, color:'#fff'}},
       text: mrSignal.map(p => `⚠ mR #${p.i} (po ${p.k})<br>${p.v.toFixed(2)} dni<br>${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
-      hoverinfo:'text'
-    }
+      hoverinfo:'text' }
   ];
-  const mrShapes = [
-    { type:'line', xref:'paper', x0:0, x1:1, y0:mR_bar, y1:mR_bar, line:{color:'#2563eb', width:1.6} },
-    { type:'line', xref:'paper', x0:0, x1:1, y0:URL, y1:URL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
-  ];
-  const mrAnnots = [
-    { xref:'paper', x:1, y:mR_bar, xanchor:'left', text:`m̄R=${mR_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
-    { xref:'paper', x:1, y:URL, xanchor:'left', text:`URL=${URL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
-  ];
-
-  Plotly.react('chart_xmr_mr', mrTraces, {
+  Plotly.react(elId, traces, {
     paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:90, t:10, b:50},
     xaxis:{ title:'Kolejność zakończenia', gridcolor:'#f0f2f5', zeroline:false },
     yaxis:{ title:'Moving Range (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
-    shapes: mrShapes, annotations: mrAnnots,
+    shapes:[
+      { type:'line', xref:'paper', x0:0, x1:1, y0:mR_bar, y1:mR_bar, line:{color:'#2563eb', width:1.6} },
+      { type:'line', xref:'paper', x0:0, x1:1, y0:URL, y1:URL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+    ],
+    annotations:[
+      { xref:'paper', x:1, y:mR_bar, xanchor:'left', text:`m̄R=${mR_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+      { xref:'paper', x:1, y:URL, xanchor:'left', text:`URL=${URL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+    ],
     showlegend:true, legend:{orientation:'h', y:-0.25, x:0.5, xanchor:'center'},
     hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
-  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_xmr_mr'));
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler(elId));
+}
+
+// ---------- Tab 3: XmR with Sigma zones + moderate signals ----------
+function renderXmR2(visibleData) {
+  const c = calcXmR(visibleData);
+  const statsEl = document.getElementById('xmr2-stats');
+  if (!c) {
+    statsEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Za mało danych (≥ 2 punktów).</div>';
+    Plotly.react('chart_xmr2_x', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    Plotly.react('chart_xmr2_mr', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    return;
+  }
+  const { ordered, xs, mR, X_bar, mR_bar, UNPL, LNPL, LNPL_raw, URL, sigma1, sigma2 } = c;
+  const n = xs.length;
+
+  // Special signals: outside UNPL/LNPL
+  const special = xs.map(v => v > UNPL || v < LNPL_raw);
+
+  // Qualifier for moderate rule: strictly between Sigma2 and Sigma3 (UNPL) — and NOT a special signal
+  const inZone = xs.map((v,i) => v > sigma2 && v <= UNPL && !special[i]);
+
+  // Moderate signal: for each point i, mark it if there exists ANY window of 3 consecutive points
+  // [j, j+1, j+2] containing i where >= 2 points satisfy inZone.
+  const moderate = new Array(n).fill(false);
+  for (let j = 0; j <= n - 3; j++) {
+    const inWin = [inZone[j], inZone[j+1], inZone[j+2]];
+    const count = inWin.filter(x => x).length;
+    if (count >= 2) {
+      // Mark the qualifying points within this window
+      for (let k = 0; k < 3; k++) {
+        if (inWin[k]) moderate[j+k] = true;
+      }
+    }
+  }
+
+  const mrSignals = mR.map(v => v > URL);
+  const specialCount = special.filter(s=>s).length;
+  const moderateCount = moderate.filter(s=>s).length;
+  const mrSpecCount = mrSignals.filter(s=>s).length;
+
+  statsEl.innerHTML = `
+    <div class="xmr-stat"><div class="xmr-stat-label">Liczba punktów</div><div class="xmr-stat-value">${n}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">CL</div><div class="xmr-stat-value">${X_bar.toFixed(2)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 1</div><div class="xmr-stat-value">${sigma1.toFixed(2)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 2</div><div class="xmr-stat-value">${sigma2.toFixed(2)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 3 / UNPL</div><div class="xmr-stat-value">${UNPL.toFixed(2)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">LNPL</div><div class="xmr-stat-value">${LNPL.toFixed(2)}${LNPL_raw < 0 ? ' *' : ''}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały specjalne</div><div class="xmr-stat-value ${specialCount>0?'signal':''}">${specialCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały umiarkowane</div><div class="xmr-stat-value ${moderateCount>0?'moderate':''}">${moderateCount}</div></div>
+  `;
+
+  // Categorize each point
+  const idx = ordered.map((_,i) => i+1);
+  const cat = (i) => special[i] ? 'special' : (moderate[i] ? 'moderate' : 'normal');
+  const pts = ordered.map((d,i) => ({...d, i: i+1, c: cat(i)}));
+  const normalPts = pts.filter(p => p.c === 'normal');
+  const moderatePts = pts.filter(p => p.c === 'moderate');
+  const specialPts = pts.filter(p => p.c === 'special');
+
+  // Light background bands for zones (using filled shapes)
+  const xmin = 0.5, xmax = n + 0.5;
+  const zoneShapes = [
+    // Zone Sigma2->Sigma3 (moderate alert zone) — light orange
+    { type:'rect', xref:'x', yref:'y', x0:xmin, x1:xmax, y0:sigma2, y1:UNPL, fillcolor:'rgba(245,158,11,0.08)', line:{width:0}, layer:'below' },
+    // Zone Sigma1->Sigma2 — light yellow
+    { type:'rect', xref:'x', yref:'y', x0:xmin, x1:xmax, y0:sigma1, y1:sigma2, fillcolor:'rgba(251,191,36,0.06)', line:{width:0}, layer:'below' }
+  ];
+
+  const lines = [
+    ...zoneShapes,
+    { type:'line', xref:'paper', x0:0, x1:1, y0:X_bar, y1:X_bar, line:{color:'#2563eb', width:1.6} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:sigma1, y1:sigma1, line:{color:'#fbbf24', width:1.2, dash:'dot'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:sigma2, y1:sigma2, line:{color:'#f97316', width:1.3, dash:'dot'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:UNPL, y1:UNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:LNPL, y1:LNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+  ];
+  const annots = [
+    { xref:'paper', x:1, y:X_bar, xanchor:'left', text:`CL=${X_bar.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+    { xref:'paper', x:1, y:sigma1, xanchor:'left', text:`σ1=${sigma1.toFixed(1)}`, showarrow:false, font:{size:10, color:'#b45309'} },
+    { xref:'paper', x:1, y:sigma2, xanchor:'left', text:`σ2=${sigma2.toFixed(1)}`, showarrow:false, font:{size:10, color:'#c2410c'} },
+    { xref:'paper', x:1, y:UNPL, xanchor:'left', text:`σ3/UNPL=${UNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} },
+    { xref:'paper', x:1, y:LNPL, xanchor:'left', text:`LNPL=${LNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+  ];
+
+  const traces = [
+    { x: idx, y: xs, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
+    { x: normalPts.map(p=>p.i), y: normalPts.map(p=>p.d), customdata: normalPts.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'X (normalne)',
+      marker:{color:'#2563eb', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
+      text: normalPts.map(p => `#${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text' },
+    { x: moderatePts.map(p=>p.i), y: moderatePts.map(p=>p.d), customdata: moderatePts.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'Sygnał umiarkowany',
+      marker:{color:'#f59e0b', size:10, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'diamond'},
+      text: moderatePts.map(p => `◆ #${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br>2 z 3 między σ2 a σ3<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text' },
+    { x: specialPts.map(p=>p.i), y: specialPts.map(p=>p.d), customdata: specialPts.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'Sygnał specjalny',
+      marker:{color:'#ef4444', size:11, opacity:0.95, line:{width:1, color:'#fff'}},
+      text: specialPts.map(p => `⚠ #${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br>Poza UNPL/LNPL<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text' }
+  ];
+
+  Plotly.react('chart_xmr2_x', traces, {
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:100, t:10, b:50},
+    xaxis:{ title:'Kolejność zakończenia', gridcolor:'#f0f2f5', zeroline:false, range:[xmin, xmax] },
+    yaxis:{ title:'Czas realizacji X (dni)', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
+    shapes: lines, annotations: annots,
+    showlegend:true, legend:{orientation:'h', y:-0.18, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true}).then(() => attachClickHandler('chart_xmr2_x'));
+
+  renderMR('chart_xmr2_mr', ordered, mR, mR_bar, URL, mrSignals);
 }
 
 function renderExcludedList() {
@@ -561,28 +652,26 @@ function renderExcludedList() {
   });
   document.getElementById('btn-restore-all').style.display = excluded.size === 0 ? 'none' : '';
 }
-
 function restoreAll() { excluded.clear(); render(); }
 
 function render() {
   const visibleSizes = SIZES.filter(s => selectedSizes.has(s));
   const visibleData = getVisibleData();
   const allDays = visibleData.map(d => d.d);
-
   document.getElementById('stat-visible').textContent = visibleData.length;
   document.getElementById('stat-excluded').textContent = excluded.size;
   document.getElementById('stat-total').textContent = getDateFilteredAllSizes().length;
-
   if (activeTab === 'overview') {
     renderScatter(visibleSizes, visibleData, allDays);
     renderStrip(visibleSizes, visibleData, allDays);
     renderTable(visibleSizes, visibleData, allDays);
   } else if (activeTab === 'xmr') {
     renderXmR(visibleData);
+  } else if (activeTab === 'xmr2') {
+    renderXmR2(visibleData);
   }
   renderExcludedList();
 }
-
 render();
 </script>
 </body>
