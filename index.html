@@ -120,6 +120,7 @@
     <div class="tab active" data-tab="overview">Scatter + rozkład</div>
     <div class="tab" data-tab="xmr">XmR</div>
     <div class="tab" data-tab="xmr2">XmR ze strefami Sigma</div>
+    <div class="tab" data-tab="throughput">Throughput (tygodniowy)</div>
   </div>
 
   <!-- TAB 1: OVERVIEW -->
@@ -210,6 +211,57 @@
         <strong>Sygnał umiarkowany</strong> (pomarańczowy romb): w dowolnym oknie 3 kolejnych punktów co najmniej <strong>2 punkty</strong> znajdują się <strong>powyżej Sigma 2 i poniżej (lub równe) Sigma 3</strong>.<br>
         <strong>Sygnał umiarkowany trwały</strong> (żółty trójkąt): w dowolnym oknie 5 kolejnych punktów co najmniej <strong>3 punkty</strong> znajdują się <strong>powyżej Sigma 1</strong>.<br>
         Oznaczane są wszystkie punkty z danego okna, które spełniają warunek strefy. Hierarchia (gdy punkt kwalifikuje się do kilku): specjalny → umiarkowany → umiarkowany trwały.
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 4: Throughput XmR with medians -->
+  <div class="tab-content" id="tab-throughput">
+    <div class="panel">
+      <h2>Throughput tygodniowy – wartości indywidualne (X)</h2>
+      <div class="xmr-stats" id="thr-stats"></div>
+      <div id="chart_thr_x" class="chart chart-x"></div>
+      <div class="chart-caption">
+        Liczba zadań ukończonych w danym tygodniu (Pon–Nd) — pomijane są zadania zakończone w weekendy oraz dni wolne od pracy w Polsce. Cykle tygodniowe oznaczone datą poniedziałku.
+        <br>
+        <span class="legend-line" style="background:#2563eb;"></span>mediana CL
+        &nbsp;&nbsp;<span class="legend-line" style="background:#fbbf24;"></span>Sigma 1
+        &nbsp;&nbsp;<span class="legend-line" style="background:#f97316;"></span>Sigma 2
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>Sigma 3 / UNPL
+        <br>
+        <span class="legend-dot" style="background:#ef4444;"></span>specjalny
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#f59e0b;"></span>umiarkowany (2 z 3 między σ2 a σ3)
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#eab308;"></span>umiarkowany trwały (3 z 5 powyżej σ1)
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Throughput – Moving Range (mR)</h2>
+      <div id="chart_thr_mr" class="chart chart-mr"></div>
+      <div class="chart-caption">
+        mR<sub>i</sub> = |X<sub>i</sub> − X<sub>i-1</sub>|. Limity oparte o medianę mR.
+        &nbsp;&nbsp;<span class="legend-line" style="background:#2563eb;"></span>mediana mR
+        &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>URL (3,865·med(mR))
+      </div>
+    </div>
+    <div class="panel">
+      <h2>Metodyka</h2>
+      <div style="font-size:13px; line-height:1.6;">
+        <strong>Bucket tygodniowy:</strong> tydzień = Pon–Nd, identyfikowany datą poniedziałku. Wszystkie tygodnie pomiędzy pierwszym a ostatnim ukończonym zadaniem są uwzględnione (także zerowe).<br>
+        <strong>Wyłączenia:</strong> zadania ukończone w sobotę, niedzielę lub dzień ustawowo wolny od pracy w PL (w tym Wigilia od 2025) nie są wliczane do throughputu.<br>
+        <strong>XmR oparty o mediany</strong> (bardziej odporny na outliery niż wersja oparta o średnie):
+        <ul style="margin:8px 0; padding-left:20px;">
+          <li><strong>CL</strong> = mediana(X)</li>
+          <li><strong>med(mR)</strong> = mediana ruchomych zakresów</li>
+          <li><strong>UNPL/LNPL</strong> = CL ± 3,145 · med(mR)  &nbsp; <em>(LNPL podłogowany do 0)</em></li>
+          <li><strong>URL</strong> = 3,865 · med(mR)</li>
+          <li><strong>Sigma 1/2/3:</strong> podział obszaru CL → UNPL na trzy równe części</li>
+        </ul>
+        <strong>Sygnały</strong> (te same reguły co w zakładce 3, hierarchia: specjalny → umiarkowany → trwały):
+        <ul style="margin:8px 0; padding-left:20px;">
+          <li><strong>Specjalny</strong>: punkt powyżej UNPL lub poniżej LNPL</li>
+          <li><strong>Umiarkowany</strong>: 2 z 3 kolejnych tygodni między σ2 a σ3</li>
+          <li><strong>Umiarkowany trwały</strong>: 3 z 5 kolejnych tygodni powyżej σ1</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -663,6 +715,254 @@ function renderXmR2(visibleData) {
   renderMR('chart_xmr2_mr', ordered, mR, mR_bar, URL, mrSignals);
 }
 
+// ---------- Tab 4: Throughput XmR (median-based) ----------
+const PL_HOLIDAYS = new Set([
+  // 2025
+  '2025-01-01','2025-01-06',
+  '2025-04-20','2025-04-21', // Wielkanoc
+  '2025-05-01','2025-05-03',
+  '2025-06-08', // Zielone Świątki (niedziela)
+  '2025-06-19', // Boże Ciało
+  '2025-08-15',
+  '2025-11-01','2025-11-11',
+  '2025-12-24','2025-12-25','2025-12-26',
+  // 2026
+  '2026-01-01','2026-01-06',
+  '2026-04-05','2026-04-06', // Wielkanoc
+  '2026-05-01','2026-05-03',
+  '2026-05-24', // Zielone Świątki (niedziela)
+  '2026-06-04', // Boże Ciało
+  '2026-08-15',
+  '2026-11-01','2026-11-11',
+  '2026-12-24','2026-12-25','2026-12-26'
+]);
+
+function isWorkingDay(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const dow = d.getUTCDay(); // 0=Sun .. 6=Sat
+  if (dow === 0 || dow === 6) return false;
+  if (PL_HOLIDAYS.has(dateStr)) return false;
+  return true;
+}
+
+function getMonday(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  const dow = d.getUTCDay();
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setUTCDate(d.getUTCDate() + diff);
+  return d.toISOString().slice(0,10);
+}
+
+function addDays(dateStr, n) {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0,10);
+}
+
+function median(arr) {
+  if (arr.length === 0) return null;
+  const s = [...arr].sort((a,b) => a-b);
+  const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m-1] + s[m]) / 2;
+}
+
+function calcWeeklyThroughput(visibleData) {
+  // Only items resolved on working days
+  const workItems = visibleData.filter(d => isWorkingDay(d.r));
+  if (workItems.length === 0) return null;
+
+  // Group by Monday-of-week
+  const counts = new Map();
+  workItems.forEach(d => {
+    const mon = getMonday(d.r);
+    counts.set(mon, (counts.get(mon) || 0) + 1);
+  });
+
+  // Build continuous weekly series from first to last Monday
+  const firstMonday = getMonday(workItems.reduce((a,b) => a.r < b.r ? a : b).r);
+  const lastMonday = getMonday(workItems.reduce((a,b) => a.r > b.r ? a : b).r);
+  const weeks = [];
+  let cur = firstMonday;
+  while (cur <= lastMonday) {
+    weeks.push({ week: cur, count: counts.get(cur) || 0 });
+    cur = addDays(cur, 7);
+  }
+  return weeks;
+}
+
+function renderThroughput(visibleData) {
+  const statsEl = document.getElementById('thr-stats');
+  const weeks = calcWeeklyThroughput(visibleData);
+
+  if (!weeks || weeks.length < 2) {
+    statsEl.innerHTML = '<div style="color:var(--muted); font-size:13px;">Za mało danych (potrzeba ≥ 2 tygodni z zadaniami).</div>';
+    Plotly.react('chart_thr_x', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    Plotly.react('chart_thr_mr', [], {paper_bgcolor:'#fff', plot_bgcolor:'#fff'});
+    return;
+  }
+
+  const xs = weeks.map(w => w.count);
+  const labels = weeks.map(w => w.week);
+  const n = xs.length;
+  const mR = [];
+  for (let i = 1; i < n; i++) mR.push(Math.abs(xs[i] - xs[i-1]));
+
+  // Median-based XmR
+  const CL = median(xs);
+  const mR_med = median(mR);
+  const UNPL = CL + 3.145 * mR_med;
+  const LNPL_raw = CL - 3.145 * mR_med;
+  const LNPL = Math.max(0, LNPL_raw);
+  const URL = 3.865 * mR_med;
+  const sigma1 = CL + (UNPL - CL) / 3;
+  const sigma2 = CL + 2 * (UNPL - CL) / 3;
+
+  // Special signals
+  const special = xs.map(v => v > UNPL || v < LNPL_raw);
+
+  // Moderate: 2 of 3 between σ2 and σ3
+  const inZone = xs.map((v,i) => v > sigma2 && v <= UNPL && !special[i]);
+  const moderate = new Array(n).fill(false);
+  for (let j = 0; j <= n - 3; j++) {
+    const w = [inZone[j], inZone[j+1], inZone[j+2]];
+    if (w.filter(x => x).length >= 2) {
+      for (let k = 0; k < 3; k++) if (w[k]) moderate[j+k] = true;
+    }
+  }
+
+  // Persistent: 3 of 5 above σ1
+  const aboveS1 = xs.map((v,i) => v > sigma1 && !special[i]);
+  const persistent = new Array(n).fill(false);
+  for (let j = 0; j <= n - 5; j++) {
+    const w = [aboveS1[j], aboveS1[j+1], aboveS1[j+2], aboveS1[j+3], aboveS1[j+4]];
+    if (w.filter(x => x).length >= 3) {
+      for (let k = 0; k < 5; k++) if (w[k]) persistent[j+k] = true;
+    }
+  }
+
+  const mrSignals = mR.map(v => v > URL);
+  const specialCount = special.filter(s=>s).length;
+  const moderateCount = moderate.filter(s=>s).length;
+  const persistentCount = persistent.filter(s=>s).length;
+  const totalItems = xs.reduce((a,b) => a+b, 0);
+  const avgPerWeek = (totalItems / n);
+
+  statsEl.innerHTML = `
+    <div class="xmr-stat"><div class="xmr-stat-label">Tygodni</div><div class="xmr-stat-value">${n}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Zadań łącznie</div><div class="xmr-stat-value">${totalItems}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Średnia/tydz.</div><div class="xmr-stat-value">${avgPerWeek.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Mediana CL</div><div class="xmr-stat-value">${CL.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">med(mR)</div><div class="xmr-stat-value">${mR_med.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 1</div><div class="xmr-stat-value">${sigma1.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 2</div><div class="xmr-stat-value">${sigma2.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Sigma 3 / UNPL</div><div class="xmr-stat-value">${UNPL.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">LNPL</div><div class="xmr-stat-value">${LNPL.toFixed(1)}${LNPL_raw < 0 ? ' *' : ''}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">URL (mR)</div><div class="xmr-stat-value">${URL.toFixed(1)}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Specjalne</div><div class="xmr-stat-value ${specialCount>0?'signal':''}">${specialCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Umiarkowane</div><div class="xmr-stat-value ${moderateCount>0?'moderate':''}">${moderateCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Umiark. trwałe</div><div class="xmr-stat-value ${persistentCount>0?'persistent':''}">${persistentCount}</div></div>
+  `;
+
+  // Categorize
+  const cat = (i) => special[i] ? 'special' : (moderate[i] ? 'moderate' : (persistent[i] ? 'persistent' : 'normal'));
+  const pts = weeks.map((w,i) => ({ ...w, i, c: cat(i) }));
+  const normalPts = pts.filter(p => p.c === 'normal');
+  const persistentPts = pts.filter(p => p.c === 'persistent');
+  const moderatePts = pts.filter(p => p.c === 'moderate');
+  const specialPts = pts.filter(p => p.c === 'special');
+
+  const xmin = labels[0], xmax = labels[n-1];
+  const zoneShapes = [
+    { type:'rect', xref:'x', yref:'y', x0:xmin, x1:xmax, y0:sigma2, y1:UNPL, fillcolor:'rgba(245,158,11,0.08)', line:{width:0}, layer:'below' },
+    { type:'rect', xref:'x', yref:'y', x0:xmin, x1:xmax, y0:sigma1, y1:sigma2, fillcolor:'rgba(251,191,36,0.06)', line:{width:0}, layer:'below' }
+  ];
+
+  const shapes = [
+    ...zoneShapes,
+    { type:'line', xref:'paper', x0:0, x1:1, y0:CL, y1:CL, line:{color:'#2563eb', width:1.6} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:sigma1, y1:sigma1, line:{color:'#fbbf24', width:1.2, dash:'dot'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:sigma2, y1:sigma2, line:{color:'#f97316', width:1.3, dash:'dot'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:UNPL, y1:UNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} },
+    { type:'line', xref:'paper', x0:0, x1:1, y0:LNPL, y1:LNPL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+  ];
+  const annots = [
+    { xref:'paper', x:1, y:CL, xanchor:'left', text:`CL=${CL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+    { xref:'paper', x:1, y:sigma1, xanchor:'left', text:`σ1=${sigma1.toFixed(1)}`, showarrow:false, font:{size:10, color:'#b45309'} },
+    { xref:'paper', x:1, y:sigma2, xanchor:'left', text:`σ2=${sigma2.toFixed(1)}`, showarrow:false, font:{size:10, color:'#c2410c'} },
+    { xref:'paper', x:1, y:UNPL, xanchor:'left', text:`σ3=${UNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} },
+    { xref:'paper', x:1, y:LNPL, xanchor:'left', text:`LNPL=${LNPL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+  ];
+
+  const xTraces = [
+    { x: labels, y: xs, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
+    { x: normalPts.map(p=>p.week), y: normalPts.map(p=>p.count),
+      mode:'markers', type:'scatter', name:'Tydzień (normalny)',
+      marker:{color:'#2563eb', size:8, opacity:0.85, line:{width:0.5, color:'#fff'}},
+      text: normalPts.map(p => `Tydz. od ${p.week}<br>${p.count} zad.`),
+      hoverinfo:'text' },
+    { x: persistentPts.map(p=>p.week), y: persistentPts.map(p=>p.count),
+      mode:'markers', type:'scatter', name:'Umiark. trwały',
+      marker:{color:'#eab308', size:11, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'triangle-up'},
+      text: persistentPts.map(p => `▲ Tydz. od ${p.week}<br>${p.count} zad.<br>3 z 5 powyżej σ1`),
+      hoverinfo:'text' },
+    { x: moderatePts.map(p=>p.week), y: moderatePts.map(p=>p.count),
+      mode:'markers', type:'scatter', name:'Umiarkowany',
+      marker:{color:'#f59e0b', size:11, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'diamond'},
+      text: moderatePts.map(p => `◆ Tydz. od ${p.week}<br>${p.count} zad.<br>2 z 3 między σ2 a σ3`),
+      hoverinfo:'text' },
+    { x: specialPts.map(p=>p.week), y: specialPts.map(p=>p.count),
+      mode:'markers', type:'scatter', name:'Specjalny',
+      marker:{color:'#ef4444', size:12, opacity:0.95, line:{width:1, color:'#fff'}},
+      text: specialPts.map(p => `⚠ Tydz. od ${p.week}<br>${p.count} zad.<br>Poza UNPL/LNPL`),
+      hoverinfo:'text' }
+  ];
+
+  Plotly.react('chart_thr_x', xTraces, {
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:100, t:10, b:60},
+    xaxis:{ title:'Tydzień (data poniedziałku)', type:'date', gridcolor:'#f0f2f5', zeroline:false },
+    yaxis:{ title:'Liczba zadań / tydzień', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
+    shapes, annotations: annots,
+    showlegend:true, legend:{orientation:'h', y:-0.20, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true});
+
+  // mR chart
+  const mrLabels = labels.slice(1);
+  const mrPts = mR.map((v,i) => ({ x: mrLabels[i], v, sig: mrSignals[i] }));
+  const mrNormal = mrPts.filter(p => !p.sig);
+  const mrSignal = mrPts.filter(p => p.sig);
+
+  const mrTraces = [
+    { x: mrLabels, y: mR, mode:'lines', type:'scatter', line:{color:'#9ca3af', width:1}, hoverinfo:'skip', showlegend:false },
+    { x: mrNormal.map(p=>p.x), y: mrNormal.map(p=>p.v),
+      mode:'markers', type:'scatter', name:'mR',
+      marker:{color:'#7c3aed', size:8, opacity:0.85, line:{width:0.5, color:'#fff'}},
+      text: mrNormal.map(p => `mR<br>tydz. od ${p.x}<br>${p.v.toFixed(1)}`),
+      hoverinfo:'text' },
+    { x: mrSignal.map(p=>p.x), y: mrSignal.map(p=>p.v),
+      mode:'markers', type:'scatter', name:'Sygnał specjalny',
+      marker:{color:'#ef4444', size:11, opacity:0.95, line:{width:1, color:'#fff'}},
+      text: mrSignal.map(p => `⚠ mR<br>tydz. od ${p.x}<br>${p.v.toFixed(1)}`),
+      hoverinfo:'text' }
+  ];
+
+  Plotly.react('chart_thr_mr', mrTraces, {
+    paper_bgcolor:'#fff', plot_bgcolor:'#fff', margin:{l:60, r:100, t:10, b:60},
+    xaxis:{ title:'Tydzień (data poniedziałku)', type:'date', gridcolor:'#f0f2f5', zeroline:false },
+    yaxis:{ title:'Moving Range', gridcolor:'#f0f2f5', zeroline:false, rangemode:'tozero' },
+    shapes:[
+      { type:'line', xref:'paper', x0:0, x1:1, y0:mR_med, y1:mR_med, line:{color:'#2563eb', width:1.6} },
+      { type:'line', xref:'paper', x0:0, x1:1, y0:URL, y1:URL, line:{color:'#ef4444', width:1.4, dash:'dash'} }
+    ],
+    annotations:[
+      { xref:'paper', x:1, y:mR_med, xanchor:'left', text:`med=${mR_med.toFixed(1)}`, showarrow:false, font:{size:11, color:'#2563eb'} },
+      { xref:'paper', x:1, y:URL, xanchor:'left', text:`URL=${URL.toFixed(1)}`, showarrow:false, font:{size:11, color:'#ef4444'} }
+    ],
+    showlegend:true, legend:{orientation:'h', y:-0.25, x:0.5, xanchor:'center'},
+    hovermode:'closest', font:{family:'-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif', color:'#1f2937'}
+  }, {displaylogo:false, responsive:true});
+}
+
 function renderExcludedList() {
   const list = document.getElementById('excluded-list');
   list.innerHTML = '';
@@ -693,6 +993,8 @@ function render() {
     renderXmR(visibleData);
   } else if (activeTab === 'xmr2') {
     renderXmR2(visibleData);
+  } else if (activeTab === 'throughput') {
+    renderThroughput(visibleData);
   }
   renderExcludedList();
 }
