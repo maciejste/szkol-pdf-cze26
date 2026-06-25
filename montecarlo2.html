@@ -1,610 +1,526 @@
-import React, { useMemo, useState } from "react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ReferenceLine,
-  ResponsiveContainer,
-} from "recharts";
-import { ChevronUp, ChevronDown, RotateCcw, Info } from "lucide-react";
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Prognoza dostarczenia Epików</title>
+<style>
+  :root {
+    --ink: #0f172a;
+    --slate: #64748b;
+    --slate2: #94a3b8;
+    --line: #e2e8f0;
+    --bg: #f8fafc;
+    --card: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px; }
+  .mono { font-family: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace; }
+  header { border-bottom: 1px solid var(--line); padding-bottom: 16px; margin-bottom: 22px; }
+  .eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--slate); font-family: ui-monospace, monospace; }
+  h1 { font-size: 28px; margin: 6px 0 4px; letter-spacing: -.02em; }
+  .sub { color: var(--slate); font-size: 14px; }
 
-/* ============================================================
-   STAŁE WEJŚCIOWE
-   ============================================================ */
-const HIST = [3, 4, 5, 4, 2, 7, 4, 5]; // historyjki / 2-tyg. sprint (przeszłe tempo zespołu)
-const START = new Date(2026, 6, 1);    // 1 lipca 2026
-const TARGET = new Date(2026, 9, 31);  // koniec października 2026
+  .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 22px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+  .card .lbl { font-size: 12px; color: var(--slate); }
+  .card .big { font-size: 30px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .card .date { font-size: 17px; font-weight: 700; margin: 4px 0 2px; font-variant-numeric: tabular-nums; }
+  .card .foot { font-size: 11px; color: var(--slate); }
+
+  .grid { display: grid; grid-template-columns: 320px 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 920px) { .grid { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2,1fr); } h1 { font-size: 24px; } }
+
+  .panel { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+  .panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #334155; margin: 0 0 12px; }
+  .row { display: flex; align-items: center; justify-content: space-between; }
+  .ctrl { margin-top: 6px; }
+  .ctrl .head { display: flex; align-items: baseline; justify-content: space-between; }
+  .ctrl .name { font-size: 14px; font-weight: 500; }
+  .ctrl .val { font-family: ui-monospace, monospace; font-size: 14px; font-weight: 600; }
+  .ctrl .hint { font-size: 12px; color: var(--slate); margin-top: 4px; }
+  input[type=range] { width: 100%; margin-top: 8px; accent-color: #334155; cursor: pointer; }
+
+  .btn { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); background: #fff; border-radius: 6px; padding: 4px 8px; font-size: 12px; color: #475569; cursor: pointer; }
+  .btn:hover { background: #f1f5f9; }
+
+  ul.epics { list-style: none; margin: 0; padding: 0; }
+  ul.epics li { display: flex; align-items: center; gap: 8px; background: #f8fafc; border: 1px solid #eef2f7; border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; }
+  ul.epics .idx { font-family: ui-monospace, monospace; font-size: 12px; color: var(--slate2); width: 14px; }
+  ul.epics .enm { flex: 1; font-size: 14px; font-weight: 600; }
+  ul.epics .sz { font-family: ui-monospace, monospace; font-size: 12px; color: var(--slate); }
+  ul.epics .arrows { display: flex; flex-direction: column; }
+  ul.epics .arrows button { border: none; background: none; cursor: pointer; color: var(--slate); line-height: 1; padding: 0; }
+  ul.epics .arrows button:hover { color: var(--ink); }
+  ul.epics .arrows button:disabled { opacity: .2; cursor: default; }
+
+  .mrow { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .mrow .mname { width: 62px; font-family: ui-monospace, monospace; font-size: 12px; color: #475569; }
+  .mrow input { flex: 1; margin: 0; }
+  .mrow .mval { width: 42px; text-align: right; font-family: ui-monospace, monospace; font-size: 12px; font-weight: 600; }
+
+  .chartcard { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+  .chartcard h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: #334155; margin: 0 0 4px; }
+  .chartcard p.note { font-size: 12px; color: var(--slate); margin: 0 0 12px; }
+  svg text { font-family: ui-sans-serif, system-ui, sans-serif; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; }
+  thead th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--slate); background: #f8fafc; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  tbody td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-family: ui-monospace, monospace; }
+  tbody td.nm { font-family: inherit; font-weight: 600; }
+  tbody tr.total { background: #f8fafc; font-weight: 600; }
+  .center { text-align: center; }
+  .pill { display: inline-block; border-radius: 5px; padding: 2px 8px; font-size: 12px; font-weight: 700; color: #fff; font-family: ui-monospace, monospace; }
+
+  .legend { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-size: 12px; color: #475569; }
+  .scaleBar { height: 12px; width: 160px; border-radius: 4px; background: linear-gradient(90deg, rgb(220,38,38), rgb(245,158,11), rgb(22,163,74)); }
+  .legend .top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Prognoza probabilistyczna · Monte Carlo · <span id="nsims"></span> symulacji</div>
+    <h1>Dostarczenie 6 Epików</h1>
+    <div class="sub">Start: 1 lipca 2026 · Cel: koniec października 2026 · Sprint = 2 tygodnie</div>
+  </header>
+
+  <section class="cards" id="cards"></section>
+
+  <div class="grid">
+    <aside>
+      <div class="panel">
+        <div class="row" style="margin-bottom:12px">
+          <h2 style="margin:0">Parametry</h2>
+          <button class="btn" id="reset">↺ Reset</button>
+        </div>
+
+        <div class="ctrl">
+          <div class="head"><span class="name">Skupienie zespołu na Epikach</span><span class="val" id="focusVal">75%</span></div>
+          <input type="range" id="focus" min="10" max="100" step="5" value="75" />
+          <div class="hint" id="focusHint"></div>
+        </div>
+
+        <div class="ctrl" style="margin-top:16px">
+          <div class="head"><span class="name">Limit WIP (równoległe Epiki)</span><span class="val" id="wipVal">1</span></div>
+          <input type="range" id="wip" min="1" max="6" step="1" value="1" />
+          <div class="hint" id="wipHint"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Kolejność Epików</h2>
+        <ul class="epics" id="epicList"></ul>
+      </div>
+
+      <div class="panel">
+        <h2>Mnożnik przepustowości</h2>
+        <div class="hint" style="margin:-6px 0 12px">Modeluj urlopy (spadek) lub rozpędzenie po poznaniu domeny (wzrost).</div>
+        <div id="mults"></div>
+      </div>
+    </aside>
+
+    <main>
+      <div class="chartcard">
+        <h2>Szansa ukończenia wszystkich Epików w czasie</h2>
+        <p class="note">Im wyżej / bardziej zielono, tym większa pewność dostarczenia do danej daty.</p>
+        <div id="curve"></div>
+      </div>
+
+      <div class="chartcard">
+        <h2>Harmonogram (Gantt) — percentyle 50 / 85 / 95%</h2>
+        <p class="note">Pełny kolor = mediana (P50). Bledsze ogony = ryzyko do P85 i P95. Kolor paska = szansa zmieszczenia się w celu.</p>
+        <div id="gantt"></div>
+      </div>
+
+      <div class="chartcard" style="padding:0; overflow:hidden">
+        <div id="table"></div>
+      </div>
+
+      <div class="legend">
+        <div class="top">
+          <strong style="color:#334155">Skala szansy:</strong>
+          <div class="scaleBar"></div>
+          <span style="color:var(--slate)">niska → wysoka</span>
+        </div>
+        <div>
+          ⓘ Rozmiar Epiku losowany jednostajnie z przedziału [min, max]. Tempo zespołu losowane (bootstrap) z historii:
+          <span class="mono" id="histTxt"></span> hist./sprint. W każdym sprincie: moc = tempo × skupienie × mnożnik
+          miesięczny, rozdzielana wg kolejności z limitem WIP. <span id="nsims2"></span> przebiegów, stały seed
+          (powtarzalne wyniki). Zespół zna częściowo Epiki 1–2 i lepiej pozna kolejne — odwzoruj to podnosząc mnożnik
+          późniejszych miesięcy.
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+/* ===================== STAŁE ===================== */
+const HIST = [3,4,5,4,2,7,4,5];
+const START = new Date(2026, 6, 1);   // 1 lipca 2026
+const TARGET = new Date(2026, 9, 31); // 31 października 2026
 const SPRINT_DAYS = 14;
 const N_SIMS = 4000;
-const SEED = 987654321; // stały seed => powtarzalne wyniki przy tych samych parametrach
-
-const PL_MONTHS = ["sty", "lut", "mar", "kwi", "maj", "cze", "lip", "sie", "wrz", "paź", "lis", "gru"];
+const SEED = 987654321;
+const PL = ["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
 
 const DEFAULT_EPICS = [
-  { id: 1, name: "Epik 1", min: 4, max: 6 },
-  { id: 2, name: "Epik 2", min: 3, max: 5 },
-  { id: 3, name: "Epik 3", min: 3, max: 4 },
-  { id: 4, name: "Epik 4", min: 3, max: 5 },
-  { id: 5, name: "Epik 5", min: 4, max: 7 },
-  { id: 6, name: "Epik 6", min: 4, max: 8 },
+  { id:1, name:"Epik 1", min:4, max:6 },
+  { id:2, name:"Epik 2", min:3, max:5 },
+  { id:3, name:"Epik 3", min:3, max:4 },
+  { id:4, name:"Epik 4", min:3, max:5 },
+  { id:5, name:"Epik 5", min:4, max:7 },
+  { id:6, name:"Epik 6", min:4, max:8 },
 ];
-
-// Miesiące objęte parametryzacją mnożnika przepustowości
-const MONTH_KEYS = [
-  "2026-07", "2026-08", "2026-09", "2026-10",
-  "2026-11", "2026-12", "2027-01", "2027-02", "2027-03",
-];
+const MONTH_KEYS = ["2026-07","2026-08","2026-09","2026-10","2026-11","2026-12","2027-01","2027-02","2027-03"];
 const DEFAULT_MULTS = {
-  "2026-07": 1.0,
-  "2026-08": 0.8,  // urlopy / sezon letni
-  "2026-09": 1.05, // lepsze poznanie domeny
-  "2026-10": 1.1,
-  "2026-11": 1.1,
-  "2026-12": 1.0,
-  "2027-01": 1.0,
-  "2027-02": 1.0,
-  "2027-03": 1.0,
+  "2026-07":1.0, "2026-08":0.8, "2026-09":1.05, "2026-10":1.1,
+  "2026-11":1.1, "2026-12":1.0, "2027-01":1.0, "2027-02":1.0, "2027-03":1.0
 };
 
-/* ============================================================
-   POMOCNICZE
-   ============================================================ */
-function mulberry32(a) {
-  return function () {
-    a |= 0;
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+/* ===================== POMOCNICZE ===================== */
+function mulberry32(a){return function(){a|=0;a=(a+0x6d2b79f5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};}
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r;}
+function sprintStartDate(i){return addDays(START,i*SPRINT_DAYS);}
+function sprintEndDate(i){return addDays(START,(i+1)*SPRINT_DAYS);}
+function monthKey(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");}
+function fmtDate(d){return d.getDate()+" "+PL[d.getMonth()]+" "+String(d.getFullYear()).slice(2);}
+function percentile(s,p){if(!s.length)return 0;const r=Math.max(0,Math.ceil(p*s.length)-1);return s[Math.min(r,s.length-1)];}
+function probColor(p){
+  const R=[220,38,38],A=[245,158,11],G=[22,163,74];let c;
+  if(p<=0)c=R;else if(p>=1)c=G;
+  else if(p<0.5){const t=p/0.5;c=R.map((v,i)=>Math.round(v+(A[i]-v)*t));}
+  else{const t=(p-0.5)/0.5;c=A.map((v,i)=>Math.round(v+(G[i]-v)*t));}
+  return "rgb("+c[0]+","+c[1]+","+c[2]+")";
 }
-function addDays(d, n) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
-}
-function sprintStartDate(idx) {
-  return addDays(START, idx * SPRINT_DAYS);
-}
-function sprintEndDate(idx) {
-  return addDays(START, (idx + 1) * SPRINT_DAYS);
-}
-function monthKey(d) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-function fmtDate(d) {
-  return `${d.getDate()} ${PL_MONTHS[d.getMonth()]} ${String(d.getFullYear()).slice(2)}`;
-}
-function percentile(sorted, p) {
-  if (sorted.length === 0) return 0;
-  const rank = Math.max(0, Math.ceil(p * sorted.length) - 1);
-  return sorted[Math.min(rank, sorted.length - 1)];
-}
-// kolor: 0 = czerwony, 0.5 = bursztyn, 1 = zielony
-function probColor(p) {
-  const r1 = [220, 38, 38], a = [245, 158, 11], g = [22, 163, 74];
-  let c;
-  if (p <= 0) c = r1;
-  else if (p >= 1) c = g;
-  else if (p < 0.5) {
-    const t = p / 0.5;
-    c = r1.map((v, i) => Math.round(v + (a[i] - v) * t));
-  } else {
-    const t = (p - 0.5) / 0.5;
-    c = a.map((v, i) => Math.round(v + (g[i] - v) * t));
-  }
-  return `rgb(${c[0]},${c[1]},${c[2]})`;
-}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
 
-/* ============================================================
-   SYMULACJA MONTE CARLO
-   - próbkowanie rozmiaru Epiku: rozkład jednostajny [min, max]
-   - próbkowanie przepustowości: bootstrap z danych historycznych
-   - capacity = przepustowość * skupienie * mnożnik_miesięczny
-   - alokacja równoległa wg priorytetu z limitem WIP (przelew mocy
-     na kolejny Epik, gdy bieżący się skończy)
-   ============================================================ */
-function runForecast(epics, focus, wip, mults) {
-  const E = epics.length;
-  const rng = mulberry32(SEED);
-  const finishS = Array.from({ length: E }, () => []);
-  const startS = Array.from({ length: E }, () => []);
-  const sizeS = Array.from({ length: E }, () => []);
+/* ===================== MONTE CARLO ===================== */
+function runForecast(epics, focus, wip, mults){
+  const E = epics.length, rng = mulberry32(SEED), MAXS = 90;
+  const finishS = Array.from({length:E},()=>[]);
+  const startS  = Array.from({length:E},()=>[]);
+  const sizeS   = Array.from({length:E},()=>[]);
   const programS = [];
-  const MAXS = 90;
 
-  for (let s = 0; s < N_SIMS; s++) {
-    const rem = epics.map((e) => e.min + Math.floor(rng() * (e.max - e.min + 1)));
-    epics.forEach((_, i) => sizeS[i].push(rem[i]));
+  for(let s=0;s<N_SIMS;s++){
+    const rem = epics.map(e=> e.min + Math.floor(rng()*(e.max-e.min+1)));
+    epics.forEach((_,i)=> sizeS[i].push(rem[i]));
     const done = new Array(E).fill(false);
     const doneSprint = new Array(E).fill(-1);
     const startSprint = new Array(E).fill(-1);
-    let completed = 0;
-    let sprint = 0;
+    let completed = 0, sprint = 0;
 
-    while (completed < E && sprint < MAXS) {
+    while(completed < E && sprint < MAXS){
       const sd = sprintStartDate(sprint);
       const mult = mults[monthKey(sd)] ?? 1;
-      let cap = HIST[Math.floor(rng() * HIST.length)] * focus * mult;
-
+      let cap = HIST[Math.floor(rng()*HIST.length)] * focus * mult;
       let guard = 0;
-      while (cap > 1e-9 && guard < 500) {
+      while(cap > 1e-9 && guard < 500){
         guard++;
         const active = [];
-        for (let i = 0; i < E && active.length < wip; i++) if (!done[i]) active.push(i);
-        if (active.length === 0) break;
+        for(let i=0;i<E && active.length<wip;i++) if(!done[i]) active.push(i);
+        if(active.length===0) break;
         const share = cap / active.length;
-        let consumed = 0;
-        let anyFin = false;
-        for (const i of active) {
-          if (startSprint[i] === -1) startSprint[i] = sprint;
+        let consumed = 0, anyFin = false;
+        for(const i of active){
+          if(startSprint[i]===-1) startSprint[i]=sprint;
           const take = Math.min(share, rem[i]);
-          rem[i] -= take;
-          consumed += take;
-          if (rem[i] <= 1e-9 && !done[i]) {
-            done[i] = true;
-            doneSprint[i] = sprint;
-            completed++;
-            anyFin = true;
-          }
+          rem[i]-=take; consumed+=take;
+          if(rem[i]<=1e-9 && !done[i]){ done[i]=true; doneSprint[i]=sprint; completed++; anyFin=true; }
         }
         cap -= consumed;
-        if (!anyFin) break;
+        if(!anyFin) break;
       }
       sprint++;
     }
-
     let prog = 0;
-    for (let i = 0; i < E; i++) {
-      const f = doneSprint[i] === -1 ? MAXS : doneSprint[i];
-      const st = startSprint[i] === -1 ? MAXS : startSprint[i];
-      finishS[i].push(f);
-      startS[i].push(st);
-      if (f > prog) prog = f;
+    for(let i=0;i<E;i++){
+      const f = doneSprint[i]===-1?MAXS:doneSprint[i];
+      const st = startSprint[i]===-1?MAXS:startSprint[i];
+      finishS[i].push(f); startS[i].push(st);
+      if(f>prog) prog=f;
     }
     programS.push(prog);
   }
 
-  // sortowanie do percentyli
-  finishS.forEach((a) => a.sort((x, y) => x - y));
-  startS.forEach((a) => a.sort((x, y) => x - y));
-  sizeS.forEach((a) => a.sort((x, y) => x - y));
-  const progSorted = [...programS].sort((x, y) => x - y);
+  finishS.forEach(a=>a.sort((x,y)=>x-y));
+  startS.forEach(a=>a.sort((x,y)=>x-y));
+  sizeS.forEach(a=>a.sort((x,y)=>x-y));
+  const progSorted = [...programS].sort((x,y)=>x-y);
+  const pT = arr => arr.filter(idx => sprintEndDate(idx).getTime() <= TARGET.getTime()).length / arr.length;
 
-  const pTargetOf = (arr) =>
-    arr.filter((idx) => sprintEndDate(idx).getTime() <= TARGET.getTime()).length / arr.length;
-
-  const epicResults = epics.map((e, i) => ({
+  const epicResults = epics.map((e,i)=>({
     ...e,
-    sizeP50: percentile(sizeS[i], 0.5),
-    startP50: percentile(startS[i], 0.5),
-    p50: percentile(finishS[i], 0.5),
-    p85: percentile(finishS[i], 0.85),
-    p95: percentile(finishS[i], 0.95),
-    pTarget: pTargetOf(finishS[i]),
+    sizeP50: percentile(sizeS[i],0.5),
+    startP50: percentile(startS[i],0.5),
+    p50: percentile(finishS[i],0.5),
+    p85: percentile(finishS[i],0.85),
+    p95: percentile(finishS[i],0.95),
+    pTarget: pT(finishS[i]),
   }));
-
   const program = {
-    p50: percentile(progSorted, 0.5),
-    p85: percentile(progSorted, 0.85),
-    p95: percentile(progSorted, 0.95),
-    pTarget: pTargetOf(progSorted),
+    p50: percentile(progSorted,0.5),
+    p85: percentile(progSorted,0.85),
+    p95: percentile(progSorted,0.95),
+    pTarget: pT(progSorted),
   };
-
-  // krzywa skumulowanego prawdopodobieństwa ukończenia WSZYSTKICH Epików
-  const maxSprint = Math.max(program.p95 + 1, 9);
+  const maxSprint = Math.max(program.p95+1, 9);
   const curve = [{ t: START.getTime(), prob: 0 }];
-  for (let sIdx = 0; sIdx <= maxSprint; sIdx++) {
-    const prob = (progSorted.filter((v) => v <= sIdx).length / progSorted.length) * 100;
+  for(let sIdx=0; sIdx<=maxSprint; sIdx++){
+    const prob = progSorted.filter(v=>v<=sIdx).length / progSorted.length * 100;
     curve.push({ t: sprintEndDate(sIdx).getTime(), prob });
   }
-
   return { epicResults, program, curve, maxSprint };
 }
 
-/* ============================================================
-   WYKRES GANTTA (custom SVG)
-   ============================================================ */
-function GanttChart({ epicResults, maxSprint }) {
-  const rowH = 46;
-  const padTop = 16;
-  const padBottom = 44;
-  const labelW = 96;
-  const W = 1000;
-  const plotL = labelW;
-  const plotR = W - 16;
-  const plotW = plotR - plotL;
-  const H = padTop + epicResults.length * rowH + padBottom;
+/* ===================== WYKRES: KRZYWA SZANSY (SVG) ===================== */
+function renderCurve(res){
+  const W=720,H=300,L=44,R=704,T=16,B=272;
+  const t0=START.getTime();
+  const t1=Math.max(sprintEndDate(res.maxSprint+1).getTime(), addDays(TARGET,14).getTime());
+  const x=t=>L+((t-t0)/(t1-t0))*(R-L);
+  const y=p=>B-(p/100)*(B-T);
 
-  const endDate = sprintEndDate(Math.max(maxSprint + 1, 9));
-  const t0 = START.getTime();
-  const t1 = Math.max(endDate.getTime(), addDays(TARGET, 14).getTime());
-  const x = (d) => plotL + ((d.getTime() - t0) / (t1 - t0)) * plotW;
-
-  // siatka miesięczna
-  const months = [];
-  let m = new Date(START.getFullYear(), START.getMonth(), 1);
-  while (m.getTime() <= t1) {
-    months.push(new Date(m));
-    m = new Date(m.getFullYear(), m.getMonth() + 1, 1);
+  // miesiące
+  let parts=[];
+  let m=new Date(START.getFullYear(),START.getMonth(),1);
+  while(m.getTime()<=t1){
+    const xx=x(m.getTime());
+    if(xx>=L-1&&xx<=R+1){
+      parts.push(`<line x1="${xx}" y1="${T}" x2="${xx}" y2="${B}" stroke="#eef2f7"/>`);
+      parts.push(`<text x="${xx+3}" y="${B+16}" font-size="11" fill="#64748b" class="mono">${PL[m.getMonth()]}</text>`);
+    }
+    m=new Date(m.getFullYear(),m.getMonth()+1,1);
   }
+  // poziome linie odniesienia
+  [50,85,95].forEach(v=>{
+    parts.push(`<line x1="${L}" y1="${y(v)}" x2="${R}" y2="${y(v)}" stroke="#cbd5e1" stroke-dasharray="2 3"/>`);
+  });
+  [0,50,85,95,100].forEach(v=>{
+    parts.push(`<text x="${L-6}" y="${y(v)+3}" font-size="11" fill="#64748b" text-anchor="end" class="mono">${v}%</text>`);
+  });
 
-  const targetX = x(TARGET);
+  // obszar + linia
+  const pts=res.curve.map(d=>[x(d.t),y(d.prob)]);
+  let area=`M ${pts[0][0]} ${B}`;
+  pts.forEach(p=>area+=` L ${p[0]} ${p[1]}`);
+  area+=` L ${pts[pts.length-1][0]} ${B} Z`;
+  let line="M "+pts.map(p=>p[0]+" "+p[1]).join(" L ");
 
-  return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" preserveAspectRatio="xMidYMid meet" className="select-none">
-      {/* siatka miesięczna */}
-      {months.map((mm, i) => {
-        const xx = x(mm);
-        if (xx < plotL - 1 || xx > plotR + 1) return null;
-        return (
-          <g key={i}>
-            <line x1={xx} y1={padTop} x2={xx} y2={H - padBottom} stroke="#e2e8f0" strokeWidth="1" />
-            <text x={xx + 4} y={H - padBottom + 16} fontSize="11" fill="#64748b" className="font-mono">
-              {PL_MONTHS[mm.getMonth()]}
-            </text>
-          </g>
-        );
-      })}
+  // linia celu
+  const tx=x(TARGET.getTime());
 
-      {/* linia celu (koniec października) */}
-      <line x1={targetX} y1={padTop - 6} x2={targetX} y2={H - padBottom} stroke="#0f172a" strokeWidth="1.5" strokeDasharray="5 4" />
-      <text x={targetX} y={padTop - 9} fontSize="11" fill="#0f172a" textAnchor="middle" className="font-semibold">
-        cel: 31 paź
-      </text>
+  // punkty z natywnym tooltipem
+  let dots=res.curve.map(d=>`<circle cx="${x(d.t)}" cy="${y(d.prob)}" r="2.5" fill="#0f172a"><title>${fmtDate(new Date(d.t))}: ${Math.round(d.prob)}%</title></circle>`).join("");
 
-      {/* wiersze epików */}
-      {epicResults.map((e, i) => {
-        const y = padTop + i * rowH + 8;
-        const bh = 20;
-        const xs = x(sprintStartDate(e.startP50));
-        const x50 = x(sprintEndDate(e.p50));
-        const x85 = x(sprintEndDate(e.p85));
-        const x95 = x(sprintEndDate(e.p95));
-        const col = probColor(e.pTarget);
-        return (
-          <g key={e.id}>
-            <text x={8} y={y + bh - 4} fontSize="13" fill="#0f172a" className="font-semibold">
-              {e.name}
-            </text>
-            {/* tło wiersza */}
-            <rect x={plotL} y={y - 4} width={plotW} height={bh + 8} fill={i % 2 ? "#f8fafc" : "#ffffff"} />
-            {/* segment P85->P95 (najjaśniejszy ogon ryzyka) */}
-            <rect x={x85} y={y} width={Math.max(0, x95 - x85)} height={bh} fill={col} opacity="0.22" rx="2" />
-            {/* segment P50->P85 */}
-            <rect x={x50} y={y} width={Math.max(0, x85 - x50)} height={bh} fill={col} opacity="0.45" rx="2" />
-            {/* segment start->P50 (najpewniejszy) */}
-            <rect x={xs} y={y} width={Math.max(2, x50 - xs)} height={bh} fill={col} opacity="0.95" rx="2" />
-            {/* znaczniki percentyli */}
-            {[x50, x85, x95].map((xm, k) => (
-              <line key={k} x1={xm} y1={y - 2} x2={xm} y2={y + bh + 2} stroke="#0f172a" strokeWidth="1" opacity="0.55" />
-            ))}
-            <text x={x50} y={y - 4} fontSize="9" fill="#0f172a" textAnchor="middle" className="font-mono">50</text>
-            <text x={x85} y={y - 4} fontSize="9" fill="#475569" textAnchor="middle" className="font-mono">85</text>
-            <text x={x95} y={y - 4} fontSize="9" fill="#94a3b8" textAnchor="middle" className="font-mono">95</text>
-          </g>
-        );
-      })}
-    </svg>
-  );
+  return `
+  <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">
+    <defs>
+      <linearGradient id="grad" gradientUnits="userSpaceOnUse" x1="0" y1="${T}" x2="0" y2="${B}">
+        <stop offset="0" stop-color="rgb(22,163,74)" stop-opacity="0.9"/>
+        <stop offset="0.5" stop-color="rgb(245,158,11)" stop-opacity="0.85"/>
+        <stop offset="1" stop-color="rgb(220,38,38)" stop-opacity="0.85"/>
+      </linearGradient>
+    </defs>
+    ${parts.join("")}
+    <path d="${area}" fill="url(#grad)"/>
+    <path d="${line}" fill="none" stroke="url(#grad)" stroke-width="2.5"/>
+    <line x1="${tx}" y1="${T-4}" x2="${tx}" y2="${B}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="5 4"/>
+    <text x="${tx}" y="${T-7}" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="600">cel 31 paź</text>
+    ${dots}
+  </svg>`;
 }
 
-/* ============================================================
-   GŁÓWNY KOMPONENT
-   ============================================================ */
-export default function PrognozaEpikow() {
-  const [epics, setEpics] = useState(DEFAULT_EPICS);
-  const [focus, setFocus] = useState(0.75);
-  const [wip, setWip] = useState(1);
-  const [mults, setMults] = useState(DEFAULT_MULTS);
+/* ===================== WYKRES: GANTT (SVG) ===================== */
+function renderGantt(res){
+  const epics=res.epicResults;
+  const rowH=46, padTop=18, padBottom=44, labelW=96, W=1000, plotL=labelW, plotR=W-16, plotW=plotR-plotL;
+  const H=padTop+epics.length*rowH+padBottom;
+  const endDate=sprintEndDate(Math.max(res.maxSprint+1,9));
+  const t0=START.getTime();
+  const t1=Math.max(endDate.getTime(), addDays(TARGET,14).getTime());
+  const x=d=>plotL+((d.getTime()-t0)/(t1-t0))*plotW;
 
-  const result = useMemo(
-    () => runForecast(epics, focus, wip, mults),
-    [epics, focus, wip, mults]
-  );
+  let parts=[];
+  let m=new Date(START.getFullYear(),START.getMonth(),1);
+  while(m.getTime()<=t1){
+    const xx=x(m);
+    if(xx>=plotL-1&&xx<=plotR+1){
+      parts.push(`<line x1="${xx}" y1="${padTop}" x2="${xx}" y2="${H-padBottom}" stroke="#e2e8f0"/>`);
+      parts.push(`<text x="${xx+4}" y="${H-padBottom+16}" font-size="11" fill="#64748b" class="mono">${PL[m.getMonth()]}</text>`);
+    }
+    m=new Date(m.getFullYear(),m.getMonth()+1,1);
+  }
+  const tx=x(TARGET);
+  parts.push(`<line x1="${tx}" y1="${padTop-6}" x2="${tx}" y2="${H-padBottom}" stroke="#0f172a" stroke-width="1.5" stroke-dasharray="5 4"/>`);
+  parts.push(`<text x="${tx}" y="${padTop-9}" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="600">cel: 31 paź</text>`);
 
-  const moveEpic = (i, dir) => {
-    const j = i + dir;
-    if (j < 0 || j >= epics.length) return;
-    const next = [...epics];
-    [next[i], next[j]] = [next[j], next[i]];
-    setEpics(next);
-  };
-  const reset = () => {
-    setEpics(DEFAULT_EPICS);
-    setFocus(0.75);
-    setWip(1);
-    setMults(DEFAULT_MULTS);
-  };
+  epics.forEach((e,i)=>{
+    const yTop=padTop+i*rowH+8, bh=20;
+    const xs=x(sprintStartDate(e.startP50));
+    const x50=x(sprintEndDate(e.p50));
+    const x85=x(sprintEndDate(e.p85));
+    const x95=x(sprintEndDate(e.p95));
+    const col=probColor(e.pTarget);
+    parts.push(`<rect x="${plotL}" y="${yTop-4}" width="${plotW}" height="${bh+8}" fill="${i%2?'#f8fafc':'#ffffff'}"/>`);
+    parts.push(`<text x="8" y="${yTop+bh-4}" font-size="13" fill="#0f172a" font-weight="600">${esc(e.name)}</text>`);
+    parts.push(`<rect x="${x85}" y="${yTop}" width="${Math.max(0,x95-x85)}" height="${bh}" fill="${col}" opacity="0.22" rx="2"/>`);
+    parts.push(`<rect x="${x50}" y="${yTop}" width="${Math.max(0,x85-x50)}" height="${bh}" fill="${col}" opacity="0.45" rx="2"/>`);
+    parts.push(`<rect x="${xs}" y="${yTop}" width="${Math.max(2,x50-xs)}" height="${bh}" fill="${col}" opacity="0.95" rx="2"/>`);
+    [[x50,"#0f172a","50"],[x85,"#475569","85"],[x95,"#94a3b8","95"]].forEach(([xm,cc,lab])=>{
+      parts.push(`<line x1="${xm}" y1="${yTop-2}" x2="${xm}" y2="${yTop+bh+2}" stroke="#0f172a" stroke-width="1" opacity="0.5"/>`);
+      parts.push(`<text x="${xm}" y="${yTop-4}" font-size="9" fill="${cc}" text-anchor="middle" class="mono">${lab}</text>`);
+    });
+  });
 
-  const avgHist = HIST.reduce((a, b) => a + b, 0) / HIST.length;
-  const effThroughput = avgHist * focus;
-  const pT = result.program.pTarget;
+  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet">${parts.join("")}</svg>`;
+}
 
-  const Pill = ({ p }) => (
-    <span
-      className="inline-block rounded px-2 py-0.5 text-xs font-mono font-semibold text-white"
-      style={{ backgroundColor: probColor(p) }}
-    >
-      {Math.round(p * 100)}%
+/* ===================== KARTY I TABELA ===================== */
+function renderCards(res){
+  const pT=res.program.pTarget;
+  const c=[
+    {lbl:"Szansa na cel (31 paź)", big:Math.round(pT*100)+"%", foot:"wszystkie Epiki gotowe", color:probColor(pT)},
+    {lbl:"Koniec @ 50%", date:fmtDate(sprintEndDate(res.program.p50)), foot:"data realistyczna"},
+    {lbl:"Koniec @ 85%", date:fmtDate(sprintEndDate(res.program.p85)), foot:"data bezpieczna"},
+    {lbl:"Koniec @ 95%", date:fmtDate(sprintEndDate(res.program.p95)), foot:"data konserwatywna"},
+  ];
+  return c.map(o=>`<div class="card">
+    <div class="lbl">${o.lbl}</div>
+    ${o.big?`<div class="big" style="color:${o.color}">${o.big}</div>`:`<div class="date">${o.date}</div>`}
+    <div class="foot">${o.foot}</div>
+  </div>`).join("");
+}
+function pill(p){return `<span class="pill" style="background:${probColor(p)}">${Math.round(p*100)}%</span>`;}
+function renderTable(res){
+  let rows=res.epicResults.map(e=>`<tr>
+    <td class="nm">${esc(e.name)}</td>
+    <td class="center" style="color:#64748b">${e.sizeP50} hist.</td>
+    <td>${fmtDate(sprintEndDate(e.p50))}</td>
+    <td style="color:#64748b">${fmtDate(sprintEndDate(e.p85))}</td>
+    <td style="color:#94a3b8">${fmtDate(sprintEndDate(e.p95))}</td>
+    <td class="center">${pill(e.pTarget)}</td>
+  </tr>`).join("");
+  rows+=`<tr class="total">
+    <td class="nm">Program (wszystkie)</td>
+    <td class="center" style="color:#94a3b8">—</td>
+    <td>${fmtDate(sprintEndDate(res.program.p50))}</td>
+    <td style="color:#64748b">${fmtDate(sprintEndDate(res.program.p85))}</td>
+    <td style="color:#94a3b8">${fmtDate(sprintEndDate(res.program.p95))}</td>
+    <td class="center">${pill(res.program.pTarget)}</td>
+  </tr>`;
+  return `<table>
+    <thead><tr>
+      <th>Epik</th><th class="center">Rozmiar (med.)</th><th>Koniec P50</th><th>Koniec P85</th><th>Koniec P95</th><th class="center">Szansa @ cel</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+/* ===================== STAN I LOGIKA UI ===================== */
+const state = {
+  epics: DEFAULT_EPICS.map(e=>({...e})),
+  focus: 0.75,
+  wip: 1,
+  mults: {...DEFAULT_MULTS},
+};
+
+function renderEpicList(){
+  const ul=document.getElementById("epicList");
+  ul.innerHTML = state.epics.map((e,i)=>`<li>
+    <span class="idx">${i+1}</span>
+    <span class="enm">${esc(e.name)}</span>
+    <span class="sz">${e.min}–${e.max} hist.</span>
+    <span class="arrows">
+      <button data-mv="${i}:-1" ${i===0?"disabled":""}>▲</button>
+      <button data-mv="${i}:1" ${i===state.epics.length-1?"disabled":""}>▼</button>
     </span>
-  );
-
-  return (
-    <div className="min-h-screen w-full bg-slate-50 p-4 text-slate-900 sm:p-6">
-      <div className="mx-auto max-w-6xl">
-        {/* nagłówek */}
-        <header className="mb-6 border-b border-slate-200 pb-4">
-          <p className="font-mono text-xs uppercase tracking-widest text-slate-500">
-            Prognoza probabilistyczna · Monte Carlo · {N_SIMS.toLocaleString("pl")} symulacji
-          </p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-            Dostarczenie 6 Epików
-          </h1>
-          <p className="mt-1 text-sm text-slate-600">
-            Start: 1 lipca 2026 · Cel: koniec października 2026 · Sprint = 2 tygodnie
-          </p>
-        </header>
-
-        {/* karty wyników */}
-        <section className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <p className="text-xs text-slate-500">Szansa na cel (31 paź)</p>
-            <p className="mt-1 text-3xl font-bold tabular-nums" style={{ color: probColor(pT) }}>
-              {Math.round(pT * 100)}%
-            </p>
-            <p className="mt-1 text-xs text-slate-500">wszystkie Epiki gotowe</p>
-          </div>
-          {[
-            { k: "50%", v: result.program.p50, sub: "data realistyczna" },
-            { k: "85%", v: result.program.p85, sub: "data bezpieczna" },
-            { k: "95%", v: result.program.p95, sub: "data konserwatywna" },
-          ].map((c) => (
-            <div key={c.k} className="rounded-lg border border-slate-200 bg-white p-4">
-              <p className="text-xs text-slate-500">Koniec @ {c.k}</p>
-              <p className="mt-1 text-lg font-bold tabular-nums">{fmtDate(sprintEndDate(c.v))}</p>
-              <p className="mt-1 text-xs text-slate-500">{c.sub}</p>
-            </div>
-          ))}
-        </section>
-
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          {/* PANEL STEROWANIA */}
-          <aside className="space-y-5 lg:col-span-1">
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Parametry</h2>
-                <button
-                  onClick={reset}
-                  className="flex items-center gap-1 rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
-                >
-                  <RotateCcw size={12} /> Reset
-                </button>
-              </div>
-
-              {/* skupienie */}
-              <label className="block">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-medium">Skupienie zespołu na Epikach</span>
-                  <span className="font-mono text-sm font-semibold">{Math.round(focus * 100)}%</span>
-                </div>
-                <input
-                  type="range" min="10" max="100" step="5"
-                  value={focus * 100}
-                  onChange={(e) => setFocus(Number(e.target.value) / 100)}
-                  className="mt-2 w-full accent-slate-700"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  Efektywnie: {effThroughput.toFixed(2)} hist./sprint (z {avgHist.toFixed(2)} śr.)
-                </p>
-              </label>
-
-              {/* WIP */}
-              <label className="mt-4 block">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-medium">Limit WIP (równoległe Epiki)</span>
-                  <span className="font-mono text-sm font-semibold">{wip}</span>
-                </div>
-                <input
-                  type="range" min="1" max="6" step="1"
-                  value={wip}
-                  onChange={(e) => setWip(Number(e.target.value))}
-                  className="mt-2 w-full accent-slate-700"
-                />
-                <p className="mt-1 text-xs text-slate-500">
-                  {wip === 1 ? "Epiki realizowane po kolei" : `Do ${wip} Epików jednocześnie (moc dzielona)`}
-                </p>
-              </label>
-            </div>
-
-            {/* kolejność epików */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                Kolejność Epików
-              </h2>
-              <ul className="space-y-1.5">
-                {epics.map((e, i) => (
-                  <li key={e.id} className="flex items-center gap-2 rounded border border-slate-100 bg-slate-50 px-2 py-1.5">
-                    <span className="font-mono text-xs text-slate-400">{i + 1}</span>
-                    <span className="flex-1 text-sm font-medium">{e.name}</span>
-                    <span className="font-mono text-xs text-slate-500">{e.min}–{e.max} hist.</span>
-                    <span className="flex flex-col">
-                      <button onClick={() => moveEpic(i, -1)} disabled={i === 0}
-                        className="text-slate-500 hover:text-slate-900 disabled:opacity-20">
-                        <ChevronUp size={14} />
-                      </button>
-                      <button onClick={() => moveEpic(i, 1)} disabled={i === epics.length - 1}
-                        className="text-slate-500 hover:text-slate-900 disabled:opacity-20">
-                        <ChevronDown size={14} />
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* mnożniki miesięczne */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-700">
-                Mnożnik przepustowości
-              </h2>
-              <p className="mb-3 text-xs text-slate-500">
-                Modeluj urlopy (spadek) lub rozpędzenie po poznaniu domeny (wzrost).
-              </p>
-              <div className="space-y-2">
-                {MONTH_KEYS.map((mk) => {
-                  const [y, mo] = mk.split("-");
-                  const val = mults[mk] ?? 1;
-                  const c = val < 1 ? probColor(0.15) : val > 1 ? probColor(0.95) : "#64748b";
-                  return (
-                    <div key={mk} className="flex items-center gap-2">
-                      <span className="w-16 font-mono text-xs text-slate-600">
-                        {PL_MONTHS[Number(mo) - 1]} '{y.slice(2)}
-                      </span>
-                      <input
-                        type="range" min="0.5" max="1.5" step="0.05"
-                        value={val}
-                        onChange={(e) => setMults({ ...mults, [mk]: Number(e.target.value) })}
-                        className="flex-1 accent-slate-700"
-                      />
-                      <span className="w-10 text-right font-mono text-xs font-semibold" style={{ color: c }}>
-                        {Math.round(val * 100)}%
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </aside>
-
-          {/* WYKRESY */}
-          <main className="space-y-6 lg:col-span-2">
-            {/* Krzywa prawdopodobieństwa */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <div className="mb-1 flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                  Szansa ukończenia wszystkich Epików w czasie
-                </h2>
-              </div>
-              <p className="mb-3 text-xs text-slate-500">
-                Im wyżej / bardziej zielono, tym większa pewność dostarczenia do danej daty.
-              </p>
-              <ResponsiveContainer width="100%" height={260}>
-                <AreaChart data={result.curve} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="probGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="rgb(22,163,74)" stopOpacity="0.9" />
-                      <stop offset="50%" stopColor="rgb(245,158,11)" stopOpacity="0.85" />
-                      <stop offset="100%" stopColor="rgb(220,38,38)" stopOpacity="0.85" />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eef2f7" />
-                  <XAxis
-                    dataKey="t" type="number" scale="time"
-                    domain={["dataMin", "dataMax"]}
-                    tickFormatter={(t) => fmtDate(new Date(t))}
-                    tick={{ fontSize: 11, fill: "#64748b" }}
-                    minTickGap={40}
-                  />
-                  <YAxis
-                    domain={[0, 100]} ticks={[0, 50, 85, 95, 100]}
-                    tickFormatter={(v) => `${v}%`}
-                    tick={{ fontSize: 11, fill: "#64748b" }}
-                    width={38}
-                  />
-                  <Tooltip
-                    formatter={(v) => [`${Math.round(v)}%`, "Szansa"]}
-                    labelFormatter={(t) => fmtDate(new Date(t))}
-                    contentStyle={{ fontSize: 12, borderRadius: 8, border: "1px solid #e2e8f0" }}
-                  />
-                  <ReferenceLine y={50} stroke="#cbd5e1" strokeDasharray="2 2" />
-                  <ReferenceLine y={85} stroke="#cbd5e1" strokeDasharray="2 2" />
-                  <ReferenceLine y={95} stroke="#cbd5e1" strokeDasharray="2 2" />
-                  <ReferenceLine
-                    x={TARGET.getTime()} stroke="#0f172a" strokeWidth={1.5} strokeDasharray="5 4"
-                    label={{ value: "cel 31 paź", position: "top", fontSize: 11, fill: "#0f172a" }}
-                  />
-                  <Area
-                    type="monotone" dataKey="prob"
-                    stroke="rgb(15,23,42)" strokeWidth={2}
-                    fill="url(#probGrad)" fillOpacity={1}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-
-            {/* Gantt */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">
-                Harmonogram (Gantt) — percentyle 50 / 85 / 95%
-              </h2>
-              <p className="mb-3 text-xs text-slate-500">
-                Pełny kolor = mediana (P50). Bledsze ogony = ryzyko do P85 i P95. Kolor paska = szansa zmieszczenia się w celu.
-              </p>
-              <GanttChart epicResults={result.epicResults} maxSprint={result.maxSprint} />
-            </div>
-
-            {/* tabela */}
-            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <th className="px-3 py-2">Epik</th>
-                    <th className="px-3 py-2 text-center">Rozmiar (med.)</th>
-                    <th className="px-3 py-2">Koniec P50</th>
-                    <th className="px-3 py-2">Koniec P85</th>
-                    <th className="px-3 py-2">Koniec P95</th>
-                    <th className="px-3 py-2 text-center">Szansa @ cel</th>
-                  </tr>
-                </thead>
-                <tbody className="font-mono">
-                  {result.epicResults.map((e) => (
-                    <tr key={e.id} className="border-b border-slate-100">
-                      <td className="px-3 py-2 font-sans font-semibold">{e.name}</td>
-                      <td className="px-3 py-2 text-center text-slate-600">{e.sizeP50} hist.</td>
-                      <td className="px-3 py-2">{fmtDate(sprintEndDate(e.p50))}</td>
-                      <td className="px-3 py-2 text-slate-600">{fmtDate(sprintEndDate(e.p85))}</td>
-                      <td className="px-3 py-2 text-slate-500">{fmtDate(sprintEndDate(e.p95))}</td>
-                      <td className="px-3 py-2 text-center"><Pill p={e.pTarget} /></td>
-                    </tr>
-                  ))}
-                  <tr className="bg-slate-50 font-semibold">
-                    <td className="px-3 py-2 font-sans">Program (wszystkie)</td>
-                    <td className="px-3 py-2 text-center text-slate-400">—</td>
-                    <td className="px-3 py-2">{fmtDate(sprintEndDate(result.program.p50))}</td>
-                    <td className="px-3 py-2 text-slate-600">{fmtDate(sprintEndDate(result.program.p85))}</td>
-                    <td className="px-3 py-2 text-slate-500">{fmtDate(sprintEndDate(result.program.p95))}</td>
-                    <td className="px-3 py-2 text-center"><Pill p={result.program.pTarget} /></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            {/* legenda / założenia */}
-            <div className="rounded-lg border border-slate-200 bg-white p-4 text-xs text-slate-600">
-              <div className="mb-3 flex items-center gap-3">
-                <span className="font-semibold text-slate-700">Skala szansy:</span>
-                <div className="h-3 w-40 rounded"
-                  style={{ background: "linear-gradient(90deg, rgb(220,38,38), rgb(245,158,11), rgb(22,163,74))" }} />
-                <span className="text-slate-500">niska → wysoka</span>
-              </div>
-              <p className="flex items-start gap-2">
-                <Info size={14} className="mt-0.5 shrink-0 text-slate-400" />
-                <span>
-                  Rozmiar Epiku losowany jednostajnie z przedziału [min, max]. Tempo zespołu losowane (bootstrap)
-                  z historii: {HIST.join(", ")} hist./sprint. W każdym sprincie: moc = tempo × skupienie × mnożnik
-                  miesięczny, rozdzielana wg kolejności z limitem WIP. {N_SIMS.toLocaleString("pl")} przebiegów, stały
-                  seed (powtarzalne wyniki). Zespół zna częściowo Epiki 1–2 i lepiej pozna kolejne — odwzoruj to
-                  podnosząc mnożnik późniejszych miesięcy.
-                </span>
-              </p>
-            </div>
-          </main>
-        </div>
-      </div>
-    </div>
-  );
+  </li>`).join("");
+  ul.querySelectorAll("button[data-mv]").forEach(b=>{
+    b.onclick=()=>{
+      const [i,d]=b.dataset.mv.split(":").map(Number);
+      const j=i+d;
+      if(j<0||j>=state.epics.length)return;
+      const a=state.epics; [a[i],a[j]]=[a[j],a[i]];
+      renderEpicList(); update();
+    };
+  });
 }
+function renderMults(){
+  const box=document.getElementById("mults");
+  box.innerHTML = MONTH_KEYS.map(mk=>{
+    const [y,mo]=mk.split("-");
+    const v=state.mults[mk]??1;
+    return `<div class="mrow">
+      <span class="mname">${PL[Number(mo)-1]} '${y.slice(2)}</span>
+      <input type="range" min="0.5" max="1.5" step="0.05" value="${v}" data-mk="${mk}"/>
+      <span class="mval" data-mval="${mk}">${Math.round(v*100)}%</span>
+    </div>`;
+  }).join("");
+  box.querySelectorAll("input[data-mk]").forEach(inp=>{
+    inp.addEventListener("input",()=>{
+      const mk=inp.dataset.mk, v=Number(inp.value);
+      state.mults[mk]=v;
+      const span=box.querySelector(`[data-mval="${mk}"]`);
+      span.textContent=Math.round(v*100)+"%";
+      span.style.color = v<1?probColor(0.15):v>1?probColor(0.95):"#64748b";
+      scheduleUpdate();
+    });
+    // ustaw kolor początkowy
+    const v=Number(inp.value), span=box.querySelector(`[data-mval="${inp.dataset.mk}"]`);
+    span.style.color = v<1?probColor(0.15):v>1?probColor(0.95):"#64748b";
+  });
+}
+
+let raf=null;
+function scheduleUpdate(){ if(raf)cancelAnimationFrame(raf); raf=requestAnimationFrame(update); }
+function update(){
+  raf=null;
+  const res = runForecast(state.epics, state.focus, state.wip, state.mults);
+  document.getElementById("cards").innerHTML = renderCards(res);
+  document.getElementById("curve").innerHTML = renderCurve(res);
+  document.getElementById("gantt").innerHTML = renderGantt(res);
+  document.getElementById("table").innerHTML = renderTable(res);
+}
+
+/* ===================== WIRING ===================== */
+const avgHist = HIST.reduce((a,b)=>a+b,0)/HIST.length;
+document.getElementById("nsims").textContent = N_SIMS.toLocaleString("pl");
+document.getElementById("nsims2").textContent = N_SIMS.toLocaleString("pl");
+document.getElementById("histTxt").textContent = HIST.join(", ");
+
+const focusEl=document.getElementById("focus"), focusVal=document.getElementById("focusVal"), focusHint=document.getElementById("focusHint");
+function updFocusHint(){ focusHint.textContent="Efektywnie: "+(avgHist*state.focus).toFixed(2)+" hist./sprint (z "+avgHist.toFixed(2)+" śr.)"; }
+focusEl.addEventListener("input",()=>{ state.focus=Number(focusEl.value)/100; focusVal.textContent=focusEl.value+"%"; updFocusHint(); scheduleUpdate(); });
+
+const wipEl=document.getElementById("wip"), wipVal=document.getElementById("wipVal"), wipHint=document.getElementById("wipHint");
+function updWipHint(){ wipHint.textContent = state.wip===1 ? "Epiki realizowane po kolei" : "Do "+state.wip+" Epików jednocześnie (moc dzielona)"; }
+wipEl.addEventListener("input",()=>{ state.wip=Number(wipEl.value); wipVal.textContent=wipEl.value; updWipHint(); scheduleUpdate(); });
+
+document.getElementById("reset").onclick=()=>{
+  state.epics=DEFAULT_EPICS.map(e=>({...e}));
+  state.focus=0.75; state.wip=1; state.mults={...DEFAULT_MULTS};
+  focusEl.value=75; focusVal.textContent="75%";
+  wipEl.value=1; wipVal.textContent="1";
+  updFocusHint(); updWipHint();
+  renderEpicList(); renderMults(); update();
+};
+
+/* init */
+renderEpicList();
+renderMults();
+updFocusHint();
+updWipHint();
+update();
+</script>
+</body>
+</html>
