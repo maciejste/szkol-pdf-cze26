@@ -71,6 +71,7 @@
   .xmr-stat-value { font-size: 18px; font-weight: 600; margin-top: 4px; }
   .xmr-stat-value.signal { color: var(--danger); }
   .xmr-stat-value.moderate { color: var(--moderate); }
+  .xmr-stat-value.persistent { color: #ca8a04; }
 </style>
 </head>
 <body>
@@ -184,7 +185,8 @@
         &nbsp;&nbsp;<span class="legend-line" style="background:#ef4444;"></span>Sigma 3 / UNPL
         <br>
         <span class="legend-dot" style="background:#ef4444;"></span>sygnał specjalny (poza UNPL/LNPL)
-        &nbsp;&nbsp;<span class="legend-dot" style="background:#f59e0b;"></span>sygnał umiarkowany (2 z 3 między Sigma 2 a Sigma 3)
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#f59e0b;"></span>sygnał umiarkowany (2 z 3 między σ2 a σ3)
+        &nbsp;&nbsp;<span class="legend-dot" style="background:#eab308;"></span>sygnał umiarkowany trwały (3 z 5 powyżej σ1)
       </div>
     </div>
     <div class="panel">
@@ -205,7 +207,9 @@
           <li><strong>Sigma 3</strong> = UNPL (CL + 3/3 · (UNPL − CL))</li>
         </ul>
         <strong>Sygnał specjalny</strong> (czerwony): punkt powyżej UNPL lub poniżej LNPL.<br>
-        <strong>Sygnał umiarkowany</strong> (pomarańczowy): w dowolnym oknie 3 kolejnych punktów co najmniej <strong>2 punkty</strong> znajdują się <strong>powyżej Sigma 2 i poniżej (lub równe) Sigma 3</strong>. Oznaczane są wszystkie punkty z tego okna spełniające warunek.
+        <strong>Sygnał umiarkowany</strong> (pomarańczowy romb): w dowolnym oknie 3 kolejnych punktów co najmniej <strong>2 punkty</strong> znajdują się <strong>powyżej Sigma 2 i poniżej (lub równe) Sigma 3</strong>.<br>
+        <strong>Sygnał umiarkowany trwały</strong> (żółty trójkąt): w dowolnym oknie 5 kolejnych punktów co najmniej <strong>3 punkty</strong> znajdują się <strong>powyżej Sigma 1</strong>.<br>
+        Oznaczane są wszystkie punkty z danego okna, które spełniają warunek strefy. Hierarchia (gdy punkt kwalifikuje się do kilku): specjalny → umiarkowany → umiarkowany trwały.
       </div>
     </div>
   </div>
@@ -552,9 +556,21 @@ function renderXmR2(visibleData) {
     const inWin = [inZone[j], inZone[j+1], inZone[j+2]];
     const count = inWin.filter(x => x).length;
     if (count >= 2) {
-      // Mark the qualifying points within this window
       for (let k = 0; k < 3; k++) {
         if (inWin[k]) moderate[j+k] = true;
+      }
+    }
+  }
+
+  // Persistent moderate signal: 3 of 5 consecutive points above Sigma 1 (and not special)
+  const aboveS1 = xs.map((v,i) => v > sigma1 && !special[i]);
+  const persistent = new Array(n).fill(false);
+  for (let j = 0; j <= n - 5; j++) {
+    const inWin = [aboveS1[j], aboveS1[j+1], aboveS1[j+2], aboveS1[j+3], aboveS1[j+4]];
+    const count = inWin.filter(x => x).length;
+    if (count >= 3) {
+      for (let k = 0; k < 5; k++) {
+        if (inWin[k]) persistent[j+k] = true;
       }
     }
   }
@@ -562,6 +578,7 @@ function renderXmR2(visibleData) {
   const mrSignals = mR.map(v => v > URL);
   const specialCount = special.filter(s=>s).length;
   const moderateCount = moderate.filter(s=>s).length;
+  const persistentCount = persistent.filter(s=>s).length;
   const mrSpecCount = mrSignals.filter(s=>s).length;
 
   statsEl.innerHTML = `
@@ -571,15 +588,17 @@ function renderXmR2(visibleData) {
     <div class="xmr-stat"><div class="xmr-stat-label">Sigma 2</div><div class="xmr-stat-value">${sigma2.toFixed(2)}</div></div>
     <div class="xmr-stat"><div class="xmr-stat-label">Sigma 3 / UNPL</div><div class="xmr-stat-value">${UNPL.toFixed(2)}</div></div>
     <div class="xmr-stat"><div class="xmr-stat-label">LNPL</div><div class="xmr-stat-value">${LNPL.toFixed(2)}${LNPL_raw < 0 ? ' *' : ''}</div></div>
-    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały specjalne</div><div class="xmr-stat-value ${specialCount>0?'signal':''}">${specialCount}</div></div>
-    <div class="xmr-stat"><div class="xmr-stat-label">Sygnały umiarkowane</div><div class="xmr-stat-value ${moderateCount>0?'moderate':''}">${moderateCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Specjalne</div><div class="xmr-stat-value ${specialCount>0?'signal':''}">${specialCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Umiarkowane</div><div class="xmr-stat-value ${moderateCount>0?'moderate':''}">${moderateCount}</div></div>
+    <div class="xmr-stat"><div class="xmr-stat-label">Umiark. trwałe</div><div class="xmr-stat-value ${persistentCount>0?'persistent':''}">${persistentCount}</div></div>
   `;
 
-  // Categorize each point
+  // Categorize each point — priority: special > moderate > persistent > normal
   const idx = ordered.map((_,i) => i+1);
-  const cat = (i) => special[i] ? 'special' : (moderate[i] ? 'moderate' : 'normal');
+  const cat = (i) => special[i] ? 'special' : (moderate[i] ? 'moderate' : (persistent[i] ? 'persistent' : 'normal'));
   const pts = ordered.map((d,i) => ({...d, i: i+1, c: cat(i)}));
   const normalPts = pts.filter(p => p.c === 'normal');
+  const persistentPts = pts.filter(p => p.c === 'persistent');
   const moderatePts = pts.filter(p => p.c === 'moderate');
   const specialPts = pts.filter(p => p.c === 'special');
 
@@ -614,6 +633,11 @@ function renderXmR2(visibleData) {
       mode:'markers', type:'scatter', name:'X (normalne)',
       marker:{color:'#2563eb', size:7, opacity:0.8, line:{width:0.5, color:'#fff'}},
       text: normalPts.map(p => `#${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br><i>(kliknij, aby wykluczyć)</i>`),
+      hoverinfo:'text' },
+    { x: persistentPts.map(p=>p.i), y: persistentPts.map(p=>p.d), customdata: persistentPts.map(p=>p.k),
+      mode:'markers', type:'scatter', name:'Sygnał umiark. trwały',
+      marker:{color:'#eab308', size:10, opacity:0.95, line:{width:1, color:'#fff'}, symbol:'triangle-up'},
+      text: persistentPts.map(p => `▲ #${p.i} ${p.k}<br>${p.d.toFixed(2)} dni<br>SP ${p.sp} · ${p.r}<br>3 z 5 powyżej σ1<br><i>(kliknij, aby wykluczyć)</i>`),
       hoverinfo:'text' },
     { x: moderatePts.map(p=>p.i), y: moderatePts.map(p=>p.d), customdata: moderatePts.map(p=>p.k),
       mode:'markers', type:'scatter', name:'Sygnał umiarkowany',
